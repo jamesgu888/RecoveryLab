@@ -1,5 +1,6 @@
 "use client";
 
+import { useState } from "react";
 import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
 import SeverityBadge from "@/components/analyze/severity-badge";
@@ -14,6 +15,8 @@ import {
   User,
   ArrowLeftRight,
   Move,
+  Video,
+  Loader2,
 } from "lucide-react";
 
 interface AnalysisResultsProps {
@@ -97,6 +100,41 @@ export default function AnalysisResults({
   onNewAnalysis,
 }: AnalysisResultsProps) {
   const { visual_analysis, coaching } = data;
+  const [isCreatingConsultation, setIsCreatingConsultation] = useState(false);
+  const [consultationUrl, setConsultationUrl] = useState<string | null>(null);
+  const [consultationError, setConsultationError] = useState<string | null>(null);
+
+  const handleScheduleConsultation = async () => {
+    setIsCreatingConsultation(true);
+    setConsultationError(null);
+
+    try {
+      // Create avatar session with the analysis results
+      const res = await fetch("/api/avatar/interactive-session", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          gait_analysis: data,
+        }),
+      });
+
+      const result = await res.json();
+
+      if (!result.success) {
+        throw new Error(result.error || "Failed to create consultation session");
+      }
+
+      // Open LiveKit room with the avatar
+      const url = `https://meet.livekit.io/custom?liveKitUrl=${encodeURIComponent(result.livekit_url)}&token=${encodeURIComponent(result.livekit_client_token)}`;
+      setConsultationUrl(url);
+      window.open(url, "_blank");
+    } catch (err) {
+      const message = err instanceof Error ? err.message : "An error occurred";
+      setConsultationError(message);
+    } finally {
+      setIsCreatingConsultation(false);
+    }
+  };
 
   return (
     <div className="mx-auto w-full max-w-[1000px] space-y-10">
@@ -299,6 +337,55 @@ export default function AnalysisResults({
             </div>
           </div>
         )}
+
+        {/* Schedule Consultation */}
+        <div className="platform-feature-card rounded-[10px] border border-[rgba(32,32,32,0.06)] p-6 sm:p-8 bg-gradient-to-b from-blue-50/50 to-white">
+          <div className="flex flex-col items-center gap-4 text-center sm:flex-row sm:text-left">
+            <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-full bg-gradient-to-b from-[#E0F5FF] to-white shadow-[0px_2px_4px_-1px_rgba(1,65,99,0.08)]">
+              <Video className="h-6 w-6 text-[#1DA1F2]" />
+            </div>
+            <div className="flex-1">
+              <h4 className="mb-1 text-lg font-bold tracking-[-0.01rem] text-[#202020]">
+                Have Questions or Concerns?
+              </h4>
+              <p className="text-sm leading-[160%] text-[rgba(32,32,32,0.65)]">
+                Schedule a virtual consultation to discuss your analysis results with our AI recovery specialist
+              </p>
+            </div>
+            <Button
+              variant="modern-primary"
+              size="modern-xl"
+              onClick={handleScheduleConsultation}
+              disabled={isCreatingConsultation}
+              className="gap-2 px-6 shrink-0"
+            >
+              {isCreatingConsultation ? (
+                <>
+                  <Loader2 className="h-5 w-5 animate-spin" />
+                  Starting...
+                </>
+              ) : (
+                <>
+                  <Video className="h-5 w-5" />
+                  Schedule Consultation
+                </>
+              )}
+            </Button>
+          </div>
+          {consultationError && (
+            <div className="mt-4 rounded-lg bg-red-50 border border-red-200 p-3 text-sm text-red-700">
+              <strong>Error:</strong> {consultationError}
+            </div>
+          )}
+          {consultationUrl && (
+            <div className="mt-4 rounded-lg bg-green-50 border border-green-200 p-3 text-sm text-green-700">
+              ✓ Consultation session opened in a new window. If it didn't open,{" "}
+              <a href={consultationUrl} target="_blank" rel="noopener noreferrer" className="underline font-semibold">
+                click here
+              </a>
+            </div>
+          )}
+        </div>
       </section>
 
       {/* ──────────────────────────────────────────────────────────────────

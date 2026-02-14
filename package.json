@@ -10,12 +10,15 @@
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.74.0",
+    "@heygen/liveavatar-web-sdk": "^0.0.10",
     "class-variance-authority": "^0.7.1",
     "clsx": "^2.1.1",
     "lucide-react": "^0.564.0",
     "next": "16.1.6",
+    "poke": "^0.2.5",
     "react": "19.2.3",
     "react-dom": "19.2.3",
+    "resend": "^6.9.2",
     "tailwind-merge": "^3.4.0",
     "uuid": "^13.0.0"
   },
