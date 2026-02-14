@@ -1,0 +1,272 @@
+@import "tailwindcss";
+
+@theme inline {
+  --color-background: var(--background);
+  --color-foreground: var(--foreground);
+  --font-sans: var(--font-geist-sans);
+  --font-mono: var(--font-geist-mono);
+
+  --color-border: hsl(var(--border));
+  --color-input: hsl(var(--input));
+  --color-ring: hsl(var(--ring));
+
+  --color-primary: hsl(var(--primary));
+  --color-primary-foreground: hsl(var(--primary-foreground));
+
+  --color-secondary: hsl(var(--secondary));
+  --color-secondary-foreground: hsl(var(--secondary-foreground));
+
+  --color-muted: hsl(var(--muted));
+  --color-muted-foreground: hsl(var(--muted-foreground));
+
+  --color-accent: hsl(var(--accent));
+  --color-accent-foreground: hsl(var(--accent-foreground));
+
+  --color-destructive: hsl(var(--destructive));
+  --color-destructive-foreground: hsl(var(--destructive-foreground));
+
+  --color-card: hsl(var(--card));
+  --color-card-foreground: hsl(var(--card-foreground));
+
+  --color-popover: hsl(var(--popover));
+  --color-popover-foreground: hsl(var(--popover-foreground));
+
+  --color-tbase: var(--tbase);
+  --color-tbase75: var(--tbase75);
+
+  --radius: 0.5rem;
+}
+
+:root {
+  --background: #ffffff;
+  --foreground: #171717;
+
+  --card: 0 0% 100%;
+  --card-foreground: 0 0% 3.9%;
+
+  --popover: 0 0% 100%;
+  --popover-foreground: 0 0% 3.9%;
+
+  --primary: 0 0% 9%;
+  --primary-foreground: 0 0% 98%;
+
+  --secondary: 0 0% 96.1%;
+  --secondary-foreground: 0 0% 9%;
+
+  --muted: 0 0% 96.1%;
+  --muted-foreground: 0 0% 45.1%;
+
+  --accent: 0 0% 96.1%;
+  --accent-foreground: 0 0% 9%;
+
+  --destructive: 0 84.2% 60.2%;
+  --destructive-foreground: 0 0% 98%;
+
+  --tbase: #202020;
+  --tbase75: #202020BF;
+
+  --border: 0 0% 89.8%;
+  --input: 0 0% 89.8%;
+  --ring: 209 100% 64%;
+}
+
+html,
+body {
+  height: 100%;
+  overflow-x: hidden;
+  -ms-overflow-style: none;
+  scrollbar-width: none;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+  text-rendering: geometricPrecision;
+  font-variant: normal;
+}
+
+html::-webkit-scrollbar,
+body::-webkit-scrollbar {
+  display: none !important;
+  width: 0 !important;
+}
+
+* {
+  border-color: hsl(var(--border));
+}
+
+body {
+  background: var(--background);
+  color: var(--foreground);
+}
+
+/* Header scroll states */
+header.active .header_bg {
+  opacity: 1 !important;
+}
+
+header.menu-hidden {
+  transform: translateY(-100%);
+}
+
+/* CTA Button styles (from sideshift) */
+.cta-button-dark {
+  text-shadow: 0 -1.054px 0 rgba(0, 0, 0, 0.5);
+  background: linear-gradient(0deg, #202020 0%, #515151 100%);
+  box-shadow:
+    37.95px 56.93px 27.41px rgba(1, 65, 99, 0.01),
+    21.08px 31.63px 23.19px rgba(1, 65, 99, 0.05),
+    9.49px 13.7px 16.87px rgba(1, 65, 99, 0.09),
+    2.11px 3.16px 9.49px rgba(1, 65, 99, 0.1),
+    inset 0px 0px 1.05px 3.16px #494949,
+    inset 0px 6.33px 5.27px rgba(0, 0, 0, 0.55);
+}
+
+.cta-button-light {
+  background: white;
+  box-shadow:
+    0px 2px 4px -1px rgba(1, 65, 99, 0.08);
+}
+
+/* Gradient text */
+.text-gradient {
+  background: linear-gradient(to right, #1DA1F2, #0d6efd);
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+}
+
+.select-hover-effect {
+  cursor: pointer;
+  transition-property: color, background-color;
+  transition-duration: 200ms;
+}
+
+.select-hover-effect:hover {
+  background-color: #f3f4f6;
+  color: black;
+}
+
+/* Fade in animation */
+.fade-in {
+  opacity: 0;
+  transform: translateY(10px);
+  animation: fadeIn 0.8s ease forwards;
+}
+
+@keyframes fadeIn {
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+/* Slide in animation */
+.slide-in {
+  opacity: 0;
+  transform: translateX(20px);
+  animation: slideIn 0.85s ease forwards;
+}
+
+@keyframes slideIn {
+  to {
+    opacity: 1;
+    transform: translateX(0);
+  }
+}
+
+/* Sheen animation for buttons */
+@keyframes sheen {
+  0% {
+    transform: translateX(-100%);
+  }
+  100% {
+    transform: translateX(100%);
+  }
+}
+
+.button-sheen {
+  position: relative;
+  overflow: hidden;
+}
+
+.button-sheen::after {
+  content: '';
+  position: absolute;
+  top: -50%;
+  left: -50%;
+  width: 200%;
+  height: 200%;
+  background: linear-gradient(
+    120deg,
+    rgba(61, 140, 250, 0) 0%,
+    rgba(61, 140, 250, 0) 30%,
+    rgba(61, 140, 250, 0.12) 50%,
+    rgba(61, 140, 250, 0) 70%,
+    rgba(61, 140, 250, 0) 100%
+  );
+  transform: translateX(-100%);
+  animation: sheen 6s infinite;
+  pointer-events: none;
+}
+
+/* Slide in right for drawers */
+@keyframes slideInRight {
+  from {
+    transform: translateX(100%);
+  }
+  to {
+    transform: translateX(0);
+  }
+}
+
+.animate-slide-in-right {
+  animation: slideInRight 0.25s cubic-bezier(0.25, 0.46, 0.45, 0.94);
+}
+
+/* Smooth scroll */
+html {
+  scroll-behavior: smooth;
+  scroll-padding-top: 100px;
+}
+
+/* Heading style */
+.h2-style {
+  font-size: 32px;
+  line-height: 96%;
+  font-weight: bold;
+  letter-spacing: -0.05em;
+}
+
+@media (min-width: 640px) {
+  .h2-style {
+    font-size: 48px;
+  }
+}
+
+@media (min-width: 768px) {
+  .h2-style {
+    font-size: 52px;
+  }
+}
+
+/* Platform feature card (from sideshift landing) */
+.platform-feature-card {
+  background:
+    linear-gradient(
+      180deg,
+      rgba(1, 65, 99, 0.06) 0%,
+      rgba(1, 65, 99, 0) 59.26%
+    ),
+    linear-gradient(0deg, #fff 0%, #fff 100%), #fff;
+  box-shadow:
+    20px 18px 7px 0 rgba(1, 65, 99, 0),
+    2px 2px 2px 0 rgba(1, 65, 99, 0.03),
+    1px 1px 2px 0 rgba(1, 65, 99, 0.02);
+}
+
+/* Scrollbar hide utility */
+.scrollbar-hide {
+  -ms-overflow-style: none;
+  scrollbar-width: none;
+}
+
+.scrollbar-hide::-webkit-scrollbar {
+  display: none !important;
+}

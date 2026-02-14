@@ -1,0 +1,18 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(ls:*)",
+      "Bash(find:*)",
+      "Bash(npx create-next-app@latest . --typescript --tailwind --eslint --app --src --no-import-alias --use-npm)",
+      "Bash(npx create-next-app@latest:*)",
+      "Bash(yes:*)",
+      "Bash(npm install:*)",
+      "WebSearch",
+      "Bash(npm run build:*)",
+      "WebFetch(domain:github.com)",
+      "Bash(npm uninstall:*)",
+      "WebFetch(domain:build.nvidia.com)",
+      "WebFetch(domain:ollama.com)"
+    ]
+  }
+}
