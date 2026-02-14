@@ -19,7 +19,8 @@
       "WebFetch(domain:api.github.com)",
       "Bash(node -e \"console.log\\(require\\(''/c/Users/fatma/Documents/GaitGuard/node_modules/styled-components/package.json''\\).version\\)\")",
       "Bash(npx next build:*)",
-      "Bash(git checkout:*)"
+      "Bash(git checkout:*)",
+      "Bash(npm ls:*)"
     ]
   }
 }
