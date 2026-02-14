@@ -7,7 +7,7 @@
 
 const TARGET_FPS = 4;
 const MIN_FRAMES = 12;
-const MAX_FRAMES = 30; // keep manageable for local VLM inference
+const MAX_FRAMES = 100; // Anthropic API limit is 100 images per request
 const GRID_COLS = 6;
 
 export interface VideoFrames {
@@ -51,8 +51,8 @@ export async function extractVideoFrames(file: File): Promise<VideoFrames> {
           return;
         }
 
-        // Only use the first 30 seconds of any video
-        const usableDuration = Math.min(duration, 30);
+        // Only use the first 15 seconds of any video
+        const usableDuration = Math.min(duration, 15);
 
         // Dynamic frame count based on usable duration at ~4 fps
         const rawCount = Math.round(usableDuration * TARGET_FPS);

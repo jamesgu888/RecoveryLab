@@ -46,7 +46,10 @@ export default function AnalysisLoading({ currentStep }: AnalysisLoadingProps) {
         {/* Header */}
         <div className="mb-8 text-center">
           <div className="mx-auto mb-4 flex h-14 w-14 items-center justify-center rounded-full bg-gradient-to-b from-[#E0F5FF] to-white">
-            <div className="h-6 w-6 animate-spin rounded-full border-2 border-[rgba(32,32,32,0.1)] border-t-[#1DA1F2]" />
+            <div
+              className="h-6 w-6 animate-spin rounded-full border-2"
+              style={{ borderColor: 'rgba(32,32,32,0.1)', borderTopColor: '#1DA1F2' }}
+            />
           </div>
           <p className="text-lg font-semibold text-[#202020]">
             Analyzing your gait

@@ -39,6 +39,7 @@ export default function AnalyzePage() {
       setAnalysisStep("analyzing");
 
       // Send individual frames + timestamps as JSON
+      console.log(`[GaitGuard] Sending ${frames.length} frames to API...`);
       const res = await fetch("/api/analyze-gait", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -49,7 +50,18 @@ export default function AnalyzePage() {
         }),
       });
 
-      const data = await res.json();
+      console.log(`[GaitGuard] API responded with status ${res.status}`);
+
+      const text = await res.text();
+      console.log(`[GaitGuard] Response body length: ${text.length}`);
+
+      let data;
+      try {
+        data = JSON.parse(text);
+      } catch (parseErr) {
+        console.error("[GaitGuard] Failed to parse response JSON:", parseErr);
+        throw new Error("Failed to parse analysis response");
+      }
 
       if (data.debug) {
         setDebugInfo(data.debug);
