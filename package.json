@@ -10,12 +10,14 @@
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.74.0",
+    "@darshanpatel2608/human-body-react": "^1.2.9",
     "class-variance-authority": "^0.7.1",
     "clsx": "^2.1.1",
     "lucide-react": "^0.564.0",
     "next": "16.1.6",
     "react": "19.2.3",
     "react-dom": "19.2.3",
+    "styled-components": "^6.3.9",
     "tailwind-merge": "^3.4.0",
     "uuid": "^13.0.0"
   },

@@ -72,7 +72,7 @@
 
 html,
 body {
-  height: 100%;
+  min-height: 100%;
   overflow-x: hidden;
   -ms-overflow-style: none;
   scrollbar-width: none;
@@ -92,6 +92,9 @@ body::-webkit-scrollbar {
   * {
     border-color: hsl(var(--border));
   }
+  button, a, [role="button"], input[type="submit"], input[type="button"] {
+    cursor: pointer;
+  }
 }
 
 body {
@@ -99,14 +102,7 @@ body {
   color: var(--foreground);
 }
 
-/* Header scroll states */
-header.active .header_bg {
-  opacity: 1 !important;
-}
-
-header.menu-hidden {
-  transform: translateY(-100%);
-}
+/* Header scroll hide/show */
 
 /* CTA Button styles (from sideshift) */
 .cta-button-dark {
@@ -129,7 +125,7 @@ header.menu-hidden {
 
 /* Gradient text */
 .text-gradient {
-  background: linear-gradient(to right, #1DA1F2, #0d6efd);
+  background: linear-gradient(to right, #1DB3FB, #00A7EF);
   -webkit-background-clip: text;
   -webkit-text-fill-color: transparent;
 }
@@ -271,4 +267,26 @@ html {
 
 .scrollbar-hide::-webkit-scrollbar {
   display: none !important;
+}
+
+/* Body figure — force colors over styled-components defaults */
+.gait-body-wrapper path {
+  fill: #DBEAFE !important;
+  stroke: #93C5FD !important;
+  stroke-width: 0.5px !important;
+  transition: fill 0.3s ease;
+  cursor: default !important;
+}
+
+.gait-body-wrapper path.selected {
+  fill: #60A5FA !important;
+  stroke: #3B82F6 !important;
+}
+
+.gait-body-wrapper path.noHover {
+  fill: #DBEAFE !important;
+}
+
+.gait-body-wrapper path.selected.noHover {
+  fill: #60A5FA !important;
 }

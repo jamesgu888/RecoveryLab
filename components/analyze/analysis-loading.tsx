@@ -48,7 +48,7 @@ export default function AnalysisLoading({ currentStep }: AnalysisLoadingProps) {
           <div className="mx-auto mb-4 flex h-14 w-14 items-center justify-center rounded-full bg-gradient-to-b from-[#E0F5FF] to-white">
             <div
               className="h-6 w-6 animate-spin rounded-full border-2"
-              style={{ borderColor: 'rgba(32,32,32,0.1)', borderTopColor: '#1DA1F2' }}
+              style={{ borderColor: 'rgba(32,32,32,0.1)', borderTopColor: '#1DB3FB' }}
             />
           </div>
           <p className="text-lg font-semibold text-[#202020]">
@@ -73,7 +73,7 @@ export default function AnalysisLoading({ currentStep }: AnalysisLoadingProps) {
                     className={cn(
                       "absolute top-[54px] left-[35px] h-3 w-[2px] transition-colors duration-500",
                       status === "completed"
-                        ? "bg-[#1DA1F2]"
+                        ? "bg-[#1DB3FB]"
                         : "bg-[rgba(32,32,32,0.08)]"
                     )}
                   />
@@ -83,7 +83,7 @@ export default function AnalysisLoading({ currentStep }: AnalysisLoadingProps) {
                   className={cn(
                     "flex items-center gap-4 rounded-lg px-4 py-3 transition-all duration-500",
                     status === "active" &&
-                      "bg-[rgba(29,161,242,0.04)]"
+                      "bg-[rgba(29,179,251,0.04)]"
                   )}
                 >
                   {/* Icon */}
@@ -91,7 +91,7 @@ export default function AnalysisLoading({ currentStep }: AnalysisLoadingProps) {
                     className={cn(
                       "flex h-10 w-10 shrink-0 items-center justify-center rounded-full transition-all duration-500",
                       status === "completed" &&
-                        "bg-gradient-to-r from-[#1DA1F2] to-[#0d6efd]",
+                        "bg-gradient-to-r from-[#1DB3FB] to-[#00A7EF]",
                       status === "active" &&
                         "bg-gradient-to-b from-[#E0F5FF] to-white",
                       status === "pending" &&
@@ -105,7 +105,7 @@ export default function AnalysisLoading({ currentStep }: AnalysisLoadingProps) {
                         className={cn(
                           "h-4 w-4 transition-colors duration-500",
                           status === "active"
-                            ? "text-[#1DA1F2]"
+                            ? "text-[#1DB3FB]"
                             : "text-[rgba(32,32,32,0.3)]"
                         )}
                       />
@@ -116,7 +116,7 @@ export default function AnalysisLoading({ currentStep }: AnalysisLoadingProps) {
                   <span
                     className={cn(
                       "text-sm font-medium transition-colors duration-500",
-                      status === "completed" && "text-[#1DA1F2]",
+                      status === "completed" && "text-[#1DB3FB]",
                       status === "active" && "text-[#202020]",
                       status === "pending" && "text-[rgba(32,32,32,0.35)]"
                     )}
@@ -139,7 +139,7 @@ export default function AnalysisLoading({ currentStep }: AnalysisLoadingProps) {
           <div className="h-1 w-full overflow-hidden rounded-full bg-[rgba(32,32,32,0.06)]">
             <div
               className={cn(
-                "h-full rounded-full bg-gradient-to-r from-[#1DA1F2] to-[#0d6efd] transition-all duration-700 ease-out"
+                "h-full rounded-full bg-gradient-to-r from-[#1DB3FB] to-[#00A7EF] transition-all duration-700 ease-out"
               )}
               style={{
                 width:

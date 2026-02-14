@@ -53,23 +53,15 @@ Guidelines:
 - Keep likely_causes to 2-3 items max.
 - Keep warning_signs to 3 items max.
 
-You MUST respond with a JSON object matching this exact structure:
+Exercises are provided separately. You ONLY need to generate the text summary.
+
+Respond with a JSON object matching this exact structure:
 {
-  "explanation": "<1-2 sentence plain-language summary>",
+  "explanation": "<1-2 sentence plain-language summary of the gait pattern>",
   "likely_causes": ["<2-3 biomechanical causes>"],
-  "exercises": [
-    {
-      "name": "<exercise name>",
-      "target": "<what it addresses>",
-      "instructions": ["<3-4 brief steps>"],
-      "sets_reps": "<e.g., 3x10>",
-      "frequency": "<e.g., daily>",
-      "form_tips": ["<1-2 key cues>"]
-    }
-  ],
-  "timeline": "<1 sentence>",
-  "warning_signs": ["<3 red flags>"],
-  "immediate_tip": "<1 sentence>"
+  "timeline": "<1 sentence expected improvement timeline>",
+  "warning_signs": ["<3 red flags that need medical attention>"],
+  "immediate_tip": "<1 sentence actionable tip for right now>"
 }
 
 Return ONLY the JSON object, no additional text.`;

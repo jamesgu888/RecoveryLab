@@ -11,7 +11,7 @@ interface ExerciseCardProps {
 }
 
 export default function ExerciseCard({ exercise, index }: ExerciseCardProps) {
-  const [isExpanded, setIsExpanded] = useState(true);
+  const [isExpanded, setIsExpanded] = useState(false);
 
   return (
     <div className="platform-feature-card rounded-[10px] border border-[rgba(32,32,32,0.06)] p-5 sm:p-6">
@@ -81,25 +81,6 @@ export default function ExerciseCard({ exercise, index }: ExerciseCardProps) {
         </div>
       </div>
 
-      {/* Form tips callout */}
-      {exercise.form_tips.length > 0 && (
-        <div className="mt-4 rounded-lg bg-gradient-to-b from-[#E0F5FF] to-white border border-[rgba(29,161,242,0.12)] p-3.5">
-          <p className="mb-1.5 text-xs font-semibold uppercase tracking-wider text-[#1DA1F2]">
-            Form Tips
-          </p>
-          <ul className="space-y-1">
-            {exercise.form_tips.map((tip, i) => (
-              <li
-                key={i}
-                className="flex items-start gap-2 text-sm leading-[160%] text-[rgba(32,32,32,0.75)]"
-              >
-                <span className="mt-1.5 inline-block h-1.5 w-1.5 shrink-0 rounded-full bg-[#1DA1F2]" />
-                {tip}
-              </li>
-            ))}
-          </ul>
-        </div>
-      )}
     </div>
   );
 }

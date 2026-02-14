@@ -1,6 +1,7 @@
 "use client";
 
 import React, { useState, useCallback } from "react";
+import { cn } from "@/lib/utils";
 import Header from "@/components/header";
 import Footer from "@/components/footer";
 import VideoUpload from "@/components/analyze/video-upload";
@@ -102,11 +103,11 @@ export default function AnalyzePage() {
   const showDebug = debugInfo || gridPreview;
 
   return (
-    <>
-      <Header />
+    <div className="flex min-h-screen flex-col">
+      <Header solid />
 
-      <main className="px-5 pb-20 pt-28 sm:px-8 sm:pt-32">
-        <div className="mx-auto max-w-3xl">
+      <main className="flex-1 px-5 pb-20 pt-28 sm:px-8 sm:pt-32">
+        <div className={cn("mx-auto", pageState === "results" ? "max-w-[1300px]" : "max-w-3xl")}>
           {pageState !== "results" && (
             <div className="fade-in mb-10 text-center">
               <h2 className="h2-style text-[#202020]">
@@ -187,6 +188,6 @@ export default function AnalyzePage() {
       </main>
 
       <Footer />
-    </>
+    </div>
   );
 }

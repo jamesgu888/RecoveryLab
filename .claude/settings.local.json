@@ -12,7 +12,13 @@
       "WebFetch(domain:github.com)",
       "Bash(npm uninstall:*)",
       "WebFetch(domain:build.nvidia.com)",
-      "WebFetch(domain:ollama.com)"
+      "WebFetch(domain:ollama.com)",
+      "WebFetch(domain:www.npmjs.com)",
+      "WebFetch(domain:www.jsdelivr.com)",
+      "WebFetch(domain:raw.githubusercontent.com)",
+      "WebFetch(domain:api.github.com)",
+      "Bash(node -e \"console.log\\(require\\(''/c/Users/fatma/Documents/GaitGuard/node_modules/styled-components/package.json''\\).version\\)\")",
+      "Bash(npx next build:*)"
     ]
   }
 }

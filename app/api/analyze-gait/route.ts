@@ -16,6 +16,8 @@ import {
   buildVLMPrompt,
 } from "@/lib/prompt-templates";
 
+import { getExercisesForGait } from "@/lib/gait-exercises";
+
 // ---------------------------------------------------------------------------
 // JSON extraction — models often wrap JSON in markdown or prose text
 // ---------------------------------------------------------------------------
@@ -227,7 +229,7 @@ export async function POST(request: NextRequest) {
     }
 
     // ------------------------------------------------------------------
-    // 3. Call Claude API for exercise coaching
+    // 3. Generate coaching summary + use hardcoded exercises
     // ------------------------------------------------------------------
 
     let coaching: CoachingPlan;
@@ -235,7 +237,7 @@ export async function POST(request: NextRequest) {
     try {
       const anthropicApiKey = env("ANTHROPIC_API_KEY");
       const claudeModel = env("CLAUDE_MODEL", "claude-haiku-4-5-20251001");
-      const claudeTimeout = envNumber("CLAUDE_API_TIMEOUT", 60000);
+      const claudeTimeout = envNumber("CLAUDE_API_TIMEOUT", 30000);
 
       debug.coaching_model = claudeModel;
 
@@ -249,13 +251,12 @@ export async function POST(request: NextRequest) {
 
       console.log("\n---------- COACHING REQUEST ----------");
       console.log(`Model: ${claudeModel}`);
-      console.log(`User prompt:\n${userPrompt}`);
 
       const coachingStart = Date.now();
 
       const message = await anthropic.messages.create({
         model: claudeModel,
-        max_tokens: 1500,
+        max_tokens: 500,
         system: COACHING_SYSTEM_PROMPT,
         messages: [{ role: "user", content: userPrompt }],
       });
@@ -275,11 +276,22 @@ export async function POST(request: NextRequest) {
       console.log(`Coaching raw response:\n${coachingRaw}`);
       console.log("---------- END COACHING RESPONSE ----------\n");
 
-      if (!coachingRaw) {
-        throw new Error("Claude returned empty content");
-      }
+      const partial = coachingRaw
+        ? extractJSON<Omit<CoachingPlan, "exercises">>(coachingRaw)
+        : null;
 
-      coaching = extractJSON<CoachingPlan>(coachingRaw);
+      coaching = {
+        explanation: partial?.explanation ?? "Analysis complete. See exercises below.",
+        likely_causes: partial?.likely_causes ?? [],
+        exercises: getExercisesForGait(vlmAnalysis.gait_type),
+        timeline: partial?.timeline ?? "4-8 weeks with consistent practice.",
+        warning_signs: partial?.warning_signs ?? [
+          "Sudden pain or weakness",
+          "Loss of balance or falls",
+          "Numbness or tingling in legs",
+        ],
+        immediate_tip: partial?.immediate_tip ?? "Focus on smooth, controlled movements while walking.",
+      };
     } catch (coachingError) {
       const message =
         coachingError instanceof Error
@@ -287,27 +299,19 @@ export async function POST(request: NextRequest) {
           : String(coachingError);
       console.error(`\nCOACHING ERROR: ${message}`);
 
-      return NextResponse.json<GaitAnalysisResponse>(
-        {
-          success: true,
-          session_id: sessionId,
-          timestamp,
-          visual_analysis: vlmAnalysis,
-          coaching: {
-            explanation:
-              "Coaching generation failed. Please review the visual analysis below.",
-            likely_causes: [],
-            exercises: [],
-            timeline: "N/A",
-            warning_signs: [],
-            immediate_tip:
-              "Please consult a healthcare professional for personalized advice.",
-          },
-          error: `Coaching generation failed: ${message}`,
-          debug,
-        },
-        { status: 200 }
-      );
+      // Still return results with hardcoded exercises even if coaching text fails
+      coaching = {
+        explanation: "See your exercise plan below based on the detected gait pattern.",
+        likely_causes: [],
+        exercises: getExercisesForGait(vlmAnalysis.gait_type),
+        timeline: "4-8 weeks with consistent practice.",
+        warning_signs: [
+          "Sudden pain or weakness",
+          "Loss of balance or falls",
+          "Numbness or tingling in legs",
+        ],
+        immediate_tip: "Please consult a healthcare professional for personalized advice.",
+      };
     }
 
     // ------------------------------------------------------------------

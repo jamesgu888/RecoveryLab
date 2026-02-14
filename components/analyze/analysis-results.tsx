@@ -5,14 +5,11 @@ import { Button } from "@/components/ui/button";
 import SeverityBadge from "@/components/analyze/severity-badge";
 import ExerciseCard from "@/components/analyze/exercise-card";
 import type { GaitAnalysisResponse } from "@/types/gait-analysis";
+import BodyObservationMap from "@/components/analyze/body-observation-map";
 import {
   AlertTriangle,
   Clock,
-  Eye,
   ArrowLeft,
-  Lightbulb,
-  User,
-  ArrowLeftRight,
   Move,
 } from "lucide-react";
 
@@ -81,7 +78,7 @@ function ObservationCard({
             <span
               className={cn(
                 "mt-1.5 inline-block h-1.5 w-1.5 shrink-0 rounded-full",
-                variant === "warning" ? "bg-amber-500" : "bg-[#1DA1F2]"
+                variant === "warning" ? "bg-amber-500" : "bg-[#1DB3FB]"
               )}
             />
             {item}
@@ -99,7 +96,7 @@ export default function AnalysisResults({
   const { visual_analysis, coaching } = data;
 
   return (
-    <div className="mx-auto w-full max-w-[1000px] space-y-10">
+    <div className="mx-auto w-full max-w-[1200px] space-y-10">
       {/* ──────────────────────────────────────────────────────────────────
           A) Header Area
       ────────────────────────────────────────────────────────────────── */}
@@ -150,156 +147,100 @@ export default function AnalysisResults({
       </div>
 
       {/* ──────────────────────────────────────────────────────────────────
-          C) Visual Analysis Section
+          C) Two-column layout: Analysis + Exercises
       ────────────────────────────────────────────────────────────────── */}
-      <section>
-        <h3 className="mb-6 text-xl font-bold tracking-[-0.03em] sm:text-2xl">
-          <span className="text-gradient">Visual Analysis</span>
-        </h3>
+      <div className="grid grid-cols-1 gap-8 lg:grid-cols-[3fr_2fr]">
+        {/* LEFT COLUMN — Visual Analysis + Coaching Summary */}
+        <div className="space-y-6">
+          <h3 className="h2-style text-[#202020]">
+            <span className="text-gradient">Visual Analysis</span>
+          </h3>
 
-        <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
-          <ObservationCard
-            title="Visual Observations"
-            icon={<Eye className="h-4 w-4 text-[#1DA1F2]" />}
-            items={visual_analysis.visual_observations}
-          />
-          <ObservationCard
-            title="Left Side"
-            icon={<User className="h-4 w-4 text-[#1DA1F2]" />}
-            items={visual_analysis.left_side_observations}
-          />
-          <ObservationCard
-            title="Right Side"
-            icon={<User className="h-4 w-4 text-[#1DA1F2]" />}
-            items={visual_analysis.right_side_observations}
-          />
-          <ObservationCard
-            title="Asymmetries"
-            icon={<ArrowLeftRight className="h-4 w-4 text-amber-500" />}
-            items={visual_analysis.asymmetries}
-            variant="warning"
-          />
-          <ObservationCard
-            title="Postural Issues"
-            icon={<Move className="h-4 w-4 text-amber-500" />}
-            items={visual_analysis.postural_issues}
-            variant="warning"
-          />
-        </div>
-      </section>
-
-      {/* ──────────────────────────────────────────────────────────────────
-          D) Coaching Section
-      ────────────────────────────────────────────────────────────────── */}
-      <section className="space-y-8">
-        <h3 className="text-xl font-bold tracking-[-0.03em] sm:text-2xl">
-          <span className="text-gradient">Your Exercise Plan</span>
-        </h3>
-
-        {/* Explanation */}
-        <div className="platform-feature-card rounded-[10px] border border-[rgba(32,32,32,0.06)] p-5 sm:p-6">
-          <p className="text-base leading-[170%] text-[rgba(32,32,32,0.75)]">
+          {/* Explanation */}
+          <p className="text-base leading-[170%] text-[rgba(32,32,32,0.75)] sm:text-lg">
             {coaching.explanation}
           </p>
+
+          <BodyObservationMap visual_analysis={visual_analysis} />
+
+          {/* Likely Causes + Postural Issues side by side */}
+          <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+            {coaching.likely_causes.length > 0 && (
+              <ObservationCard
+                title="Likely Causes"
+                icon={<Move className="h-4 w-4 text-amber-500" />}
+                items={coaching.likely_causes}
+                variant="warning"
+              />
+            )}
+            {visual_analysis.postural_issues.length > 0 && (
+              <ObservationCard
+                title="Postural Issues"
+                icon={<Move className="h-4 w-4 text-amber-500" />}
+                items={visual_analysis.postural_issues}
+                variant="warning"
+              />
+            )}
+          </div>
         </div>
 
-        {/* Likely causes */}
-        {coaching.likely_causes.length > 0 && (
-          <div>
-            <h4 className="mb-3 text-sm font-bold uppercase tracking-wider text-[rgba(32,32,32,0.45)]">
-              Likely Causes
-            </h4>
-            <ul className="space-y-2">
-              {coaching.likely_causes.map((cause, i) => (
-                <li
-                  key={i}
-                  className="flex items-start gap-2.5 text-sm leading-[160%] text-[rgba(32,32,32,0.75)]"
-                >
-                  <span className="mt-1.5 inline-block h-1.5 w-1.5 shrink-0 rounded-full bg-[rgba(32,32,32,0.25)]" />
-                  {cause}
-                </li>
+        {/* RIGHT COLUMN — Exercises + Timeline + Warnings */}
+        <div className="space-y-6">
+          <h3 className="h2-style text-[#202020]">
+            <span className="text-gradient">Your Exercise Plan</span>
+          </h3>
+
+          {/* Exercise cards */}
+          {coaching.exercises.length > 0 && (
+            <div className="space-y-4">
+              {coaching.exercises.map((exercise, i) => (
+                <ExerciseCard key={i} exercise={exercise} index={i} />
               ))}
-            </ul>
-          </div>
-        )}
-
-        {/* Immediate tip - blue callout */}
-        {coaching.immediate_tip && (
-          <div className="rounded-[10px] bg-gradient-to-b from-[#E0F5FF] to-white border border-[rgba(29,161,242,0.15)] p-5 sm:p-6">
-            <div className="flex items-start gap-3">
-              <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-white shadow-[0px_2px_4px_-1px_rgba(1,65,99,0.08)]">
-                <Lightbulb className="h-4 w-4 text-[#1DA1F2]" />
-              </div>
-              <div>
-                <p className="mb-1 text-xs font-semibold uppercase tracking-wider text-[#1DA1F2]">
-                  Immediate Tip
-                </p>
-                <p className="text-sm leading-[170%] text-[rgba(32,32,32,0.75)]">
-                  {coaching.immediate_tip}
-                </p>
-              </div>
             </div>
-          </div>
-        )}
+          )}
 
-        {/* Exercise cards */}
-        {coaching.exercises.length > 0 && (
-          <div className="space-y-4">
-            <h4 className="text-sm font-bold uppercase tracking-wider text-[rgba(32,32,32,0.45)]">
-              Exercises ({coaching.exercises.length})
-            </h4>
-            {coaching.exercises.map((exercise, i) => (
-              <ExerciseCard key={i} exercise={exercise} index={i} />
-            ))}
-          </div>
-        )}
+          {/* Timeline + Warning signs side by side */}
+          {(coaching.timeline || coaching.warning_signs.length > 0) && (
+            <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+              {coaching.timeline && (
+                <div className="platform-feature-card rounded-[10px] border border-[rgba(32,32,32,0.06)] p-5">
+                  <div className="mb-3 flex items-center gap-2">
+                    <Clock className="h-4 w-4 text-[#1DB3FB]" />
+                    <p className="text-sm font-semibold text-[#202020]">
+                      Expected Timeline
+                    </p>
+                  </div>
+                  <p className="text-sm leading-[170%] text-[rgba(32,32,32,0.75)]">
+                    {coaching.timeline}
+                  </p>
+                </div>
+              )}
 
-        {/* Timeline */}
-        {coaching.timeline && (
-          <div className="platform-feature-card rounded-[10px] border border-[rgba(32,32,32,0.06)] p-5 sm:p-6">
-            <div className="flex items-start gap-3">
-              <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-gradient-to-b from-[#E0F5FF] to-white">
-                <Clock className="h-4 w-4 text-[#1DA1F2]" />
-              </div>
-              <div>
-                <p className="mb-1 text-xs font-semibold uppercase tracking-wider text-[rgba(32,32,32,0.45)]">
-                  Expected Timeline
-                </p>
-                <p className="text-sm leading-[170%] text-[rgba(32,32,32,0.75)]">
-                  {coaching.timeline}
-                </p>
-              </div>
+              {coaching.warning_signs.length > 0 && (
+                <div className="rounded-[10px] border border-red-100 bg-red-50/50 p-5">
+                  <div className="mb-3 flex items-center gap-2">
+                    <AlertTriangle className="h-4 w-4 text-red-500" />
+                    <p className="text-sm font-semibold text-red-600">
+                      Warning Signs
+                    </p>
+                  </div>
+                  <ul className="space-y-1.5">
+                    {coaching.warning_signs.map((sign, i) => (
+                      <li
+                        key={i}
+                        className="flex items-start gap-2 text-sm leading-[160%] text-[rgba(32,32,32,0.75)]"
+                      >
+                        <span className="mt-1.5 inline-block h-1.5 w-1.5 shrink-0 rounded-full bg-red-400" />
+                        {sign}
+                      </li>
+                    ))}
+                  </ul>
+                </div>
+              )}
             </div>
-          </div>
-        )}
-
-        {/* Warning signs - red callout */}
-        {coaching.warning_signs.length > 0 && (
-          <div className="rounded-[10px] bg-gradient-to-b from-red-50 to-white border border-red-100 p-5 sm:p-6">
-            <div className="flex items-start gap-3">
-              <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-white shadow-[0px_2px_4px_-1px_rgba(1,65,99,0.08)]">
-                <AlertTriangle className="h-4 w-4 text-red-500" />
-              </div>
-              <div className="flex-1">
-                <p className="mb-2 text-xs font-semibold uppercase tracking-wider text-red-600">
-                  Warning Signs
-                </p>
-                <ul className="space-y-1.5">
-                  {coaching.warning_signs.map((sign, i) => (
-                    <li
-                      key={i}
-                      className="flex items-start gap-2 text-sm leading-[160%] text-[rgba(32,32,32,0.75)]"
-                    >
-                      <span className="mt-1.5 inline-block h-1.5 w-1.5 shrink-0 rounded-full bg-red-400" />
-                      {sign}
-                    </li>
-                  ))}
-                </ul>
-              </div>
-            </div>
-          </div>
-        )}
-      </section>
+          )}
+        </div>
+      </div>
 
       {/* ──────────────────────────────────────────────────────────────────
           E) Disclaimer Footer
