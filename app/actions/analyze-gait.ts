@@ -1,8 +1,5 @@
 "use server";
 
-// Vercel Pro: allow up to 300s for Opus VLM + coaching calls
-export const maxDuration = 300;
-
 import { v4 as uuidv4 } from "uuid";
 import Anthropic from "@anthropic-ai/sdk";
 
