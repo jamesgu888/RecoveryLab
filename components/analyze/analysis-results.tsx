@@ -128,6 +128,7 @@ export default function AnalysisResults({
         body: JSON.stringify({
           visual_analysis: data.visual_analysis,
           coaching: data.coaching,
+          session_id: data.session_id,
         }),
       });
 

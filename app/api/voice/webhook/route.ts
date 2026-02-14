@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import { addEvent } from "@/lib/recoverai/store";
+import { addEventAdmin as addEvent } from "@/lib/recoverai/store-admin";
 import { flag_for_doctor } from "@/lib/recoverai/tools";
 
 function extractPainFromText(text: string) {

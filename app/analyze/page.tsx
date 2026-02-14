@@ -12,12 +12,15 @@ import { Button } from "@/components/ui/button";
 import { RotateCcw, AlertCircle } from "lucide-react";
 import { extractVideoFrames } from "@/lib/extract-frames";
 import { analyzeGait } from "@/app/actions/analyze-gait";
+import { useAuth } from "@/components/auth-context";
+import { saveAnalysis } from "@/lib/analyses-store";
 import type { GaitAnalysisResponse, DebugInfo } from "@/types/gait-analysis";
 
 type PageState = "upload" | "analyzing" | "results" | "error";
 type AnalysisStep = "uploading" | "analyzing" | "coaching";
 
 export default function AnalyzePage() {
+  const { user } = useAuth();
   const [pageState, setPageState] = useState<PageState>("upload");
   const [analysisStep, setAnalysisStep] = useState<AnalysisStep>("uploading");
   const [results, setResults] = useState<GaitAnalysisResponse | null>(null);
@@ -74,15 +77,26 @@ export default function AnalyzePage() {
       setAnalysisStep("coaching");
       await new Promise((resolve) => setTimeout(resolve, 800));
 
-      setResults(data as GaitAnalysisResponse);
+      const analysisResult = data as GaitAnalysisResponse;
+      setResults(analysisResult);
       setPageState("results");
+
+      // Save to Firestore if user is authenticated
+      if (user) {
+        try {
+          await saveAnalysis(user.uid, analysisResult);
+          console.log("[GaitGuard] Analysis saved to Firestore");
+        } catch (saveErr) {
+          console.error("[GaitGuard] Failed to save analysis:", saveErr);
+        }
+      }
     } catch (err) {
       const message =
         err instanceof Error ? err.message : "An unexpected error occurred.";
       setErrorMessage(message);
       setPageState("error");
     }
-  }, []);
+  }, [user]);
 
   const handleRetry = useCallback(() => {
     setPageState("upload");

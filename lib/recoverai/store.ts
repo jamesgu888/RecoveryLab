@@ -1,66 +1,83 @@
-import fs from "fs/promises";
-import path from "path";
+import {
+  collection,
+  addDoc,
+  query,
+  where,
+  getDocs,
+  deleteDoc,
+} from "firebase/firestore";
 import { v4 as uuidv4 } from "uuid";
+import { db } from "@/lib/firebase";
 import type { PatientEvent } from "@/types/recoverai";
 
-const DATA_DIR = path.resolve(process.cwd(), "data");
-const EVENTS_FILE = path.join(DATA_DIR, "patient_events.json");
-
-let cache: PatientEvent[] | null = null;
-
-async function ensureDataFile() {
-  try {
-    await fs.mkdir(DATA_DIR, { recursive: true });
-    await fs.access(EVENTS_FILE).catch(async () => {
-      await fs.writeFile(EVENTS_FILE, JSON.stringify([]), "utf8");
-    });
-  } catch (err) {
-    // ignore
-  }
-}
+const COLLECTION = "patient_events";
 
 export async function loadEvents(): Promise<PatientEvent[]> {
-  if (cache) return cache;
-  await ensureDataFile();
-  try {
-    const raw = await fs.readFile(EVENTS_FILE, "utf8");
-    cache = JSON.parse(raw || "[]") as PatientEvent[];
-    return cache;
-  } catch (err) {
-    cache = [];
-    return cache;
-  }
-}
-
-export async function persistEvents(events: PatientEvent[]) {
-  await ensureDataFile();
-  cache = events;
-  await fs.writeFile(EVENTS_FILE, JSON.stringify(events, null, 2), "utf8");
+  const snap = await getDocs(collection(db, COLLECTION));
+  const results = snap.docs.map((d) => d.data() as PatientEvent);
+  results.sort((a, b) => a.created_at.localeCompare(b.created_at));
+  return results;
 }
 
 export async function addEvent(e: Omit<PatientEvent, "id" | "created_at">) {
-  const events = await loadEvents();
   const ev: PatientEvent = {
     ...e,
     id: uuidv4(),
     created_at: new Date().toISOString(),
   };
-  events.push(ev);
-  await persistEvents(events);
+  await addDoc(collection(db, COLLECTION), ev);
   return ev;
 }
 
 export async function getEventsForPatient(patient_id: string) {
-  const events = await loadEvents();
-  return events.filter((e) => e.patient_id === patient_id).sort((a,b)=>a.created_at.localeCompare(b.created_at));
+  const q = query(
+    collection(db, COLLECTION),
+    where("patient_id", "==", patient_id)
+  );
+  const snap = await getDocs(q);
+  const results = snap.docs.map((d) => d.data() as PatientEvent);
+  results.sort((a, b) => a.created_at.localeCompare(b.created_at));
+  return results;
+}
+
+export async function getEventsForPatients(
+  patientIds: string[]
+): Promise<PatientEvent[]> {
+  if (patientIds.length === 0) return [];
+  // Firestore 'in' queries support up to 30 values
+  const chunks: string[][] = [];
+  for (let i = 0; i < patientIds.length; i += 30) {
+    chunks.push(patientIds.slice(i, i + 30));
+  }
+  const allEvents: PatientEvent[] = [];
+  for (const chunk of chunks) {
+    const q = query(
+      collection(db, COLLECTION),
+      where("patient_id", "in", chunk)
+    );
+    const snap = await getDocs(q);
+    allEvents.push(...snap.docs.map((d) => d.data() as PatientEvent));
+  }
+  allEvents.sort((a, b) => b.created_at.localeCompare(a.created_at));
+  return allEvents;
 }
 
 export async function getEventsSince(patient_id: string, sinceIso: string) {
-  const events = await getEventsForPatient(patient_id);
-  return events.filter((e) => e.created_at >= sinceIso);
+  // Query by patient_id only, filter client-side to avoid composite index
+  const q = query(
+    collection(db, COLLECTION),
+    where("patient_id", "==", patient_id)
+  );
+  const snap = await getDocs(q);
+  const results = snap.docs
+    .map((d) => d.data() as PatientEvent)
+    .filter((e) => e.created_at >= sinceIso);
+  results.sort((a, b) => a.created_at.localeCompare(b.created_at));
+  return results;
 }
 
 export async function clearEvents() {
-  cache = [];
-  await persistEvents([]);
+  const snap = await getDocs(collection(db, COLLECTION));
+  const deletes = snap.docs.map((d) => deleteDoc(d.ref));
+  await Promise.all(deletes);
 }

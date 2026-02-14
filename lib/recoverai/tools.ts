@@ -1,5 +1,5 @@
 import { Resend } from "resend";
-import { addEvent, getEventsForPatient, getEventsSince } from "@/lib/recoverai/store";
+import { addEventAdmin as addEvent, getEventsForPatientAdmin as getEventsForPatient, getEventsSinceAdmin as getEventsSince } from "@/lib/recoverai/store-admin";
 import type { PatientEvent } from "@/types/recoverai";
 
 const RED_FLAG_KEYWORDS = [

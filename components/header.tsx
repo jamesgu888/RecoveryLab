@@ -2,9 +2,12 @@
 
 import React, { useState, useRef, useEffect, useCallback } from "react";
 import Link from "next/link";
+import { useRouter } from "next/navigation";
 import Logo from "@/components/logo";
 import CTAButton from "@/components/ui/button-cta";
-import { Menu, X } from "lucide-react";
+import { useAuth } from "@/components/auth-context";
+import { signOut } from "@/lib/firebase-auth";
+import { Menu, X, LogOut, LayoutDashboard } from "lucide-react";
 
 const headerNavLinks = [
   { href: "#features", label: "Features" },
@@ -18,12 +21,20 @@ interface HeaderProps {
 }
 
 export default function Header({ solid = false }: HeaderProps) {
+  const { user, loading } = useAuth();
+  const router = useRouter();
   const [isMenuOpen, setIsMenuOpen] = useState(false);
   const [hidden, setHidden] = useState(false);
   const [atTop, setAtTop] = useState(true);
   const lastY = useRef(0);
 
   const closeMobileMenu = () => setIsMenuOpen(false);
+
+  const handleSignOut = async () => {
+    closeMobileMenu();
+    await signOut();
+    router.push("/signin");
+  };
 
   const handleScroll = useCallback(() => {
     const winY = window.scrollY;
@@ -44,6 +55,8 @@ export default function Header({ solid = false }: HeaderProps) {
     window.addEventListener("scroll", handleScroll, { passive: true });
     return () => window.removeEventListener("scroll", handleScroll);
   }, [handleScroll]);
+
+  const isLoggedIn = !loading && !!user;
 
   return (
     <div className="h-[72px] w-full sm:h-[88px]">
@@ -83,37 +96,79 @@ export default function Header({ solid = false }: HeaderProps) {
                 </nav>
               </div>
               <div className="flex items-center gap-4">
-                <div className="hidden items-center gap-4 md:flex">
-                  <Link
-                    href="/signin"
-                    className="bg-[linear-gradient(0deg,#202020_0%,#515151_100%)] bg-clip-text text-base leading-[140%] font-bold [-webkit-background-clip:text] [-webkit-text-fill-color:transparent]"
-                  >
-                    Sign in
-                  </Link>
-                  <Link href="/signup">
-                    <CTAButton variant="primary" size="sm">
-                      <span>Get Started</span>
-                    </CTAButton>
-                  </Link>
-                </div>
-                <div className="flex gap-2 md:hidden">
-                  <button
-                    onClick={() => setIsMenuOpen(!isMenuOpen)}
-                    className="shrink-0 rounded-lg transition-colors hover:bg-gray-100"
-                    aria-label="Toggle mobile menu"
-                  >
-                    {isMenuOpen ? (
-                      <X className="h-6 w-6 text-gray-700" />
-                    ) : (
-                      <Menu className="h-6 w-6 text-gray-700" />
-                    )}
-                  </button>
-                  <Link href="/signup">
-                    <CTAButton size="sm" variant="secondary">
-                      Sign In
-                    </CTAButton>
-                  </Link>
-                </div>
+                {isLoggedIn ? (
+                  /* Logged-in state */
+                  <>
+                    <div className="hidden items-center gap-2 md:flex">
+                      <Link
+                        href="/dashboard"
+                        className="inline-flex items-center gap-1.5 rounded-full px-3.5 py-1.5 text-sm font-semibold text-[#202020] transition-colors hover:bg-[rgba(32,32,32,0.05)]"
+                      >
+                        <LayoutDashboard className="h-4 w-4" />
+                        Dashboard
+                      </Link>
+                      <div className="mx-1 h-5 w-px bg-[rgba(32,32,32,0.1)]" />
+                      <button
+                        onClick={handleSignOut}
+                        className="inline-flex items-center gap-1.5 rounded-full px-3 py-1.5 text-sm text-[rgba(32,32,32,0.6)] transition-colors hover:bg-[rgba(32,32,32,0.05)] hover:text-[#202020] cursor-pointer"
+                      >
+                        <LogOut className="h-3.5 w-3.5" />
+                        Sign out
+                      </button>
+                      <div className="flex h-8 w-8 items-center justify-center rounded-full bg-gradient-to-br from-[#1DB3FB] to-[#84A1FF] text-xs font-bold text-white">
+                        {(user.email?.[0] || "U").toUpperCase()}
+                      </div>
+                    </div>
+                    <div className="flex gap-2 md:hidden">
+                      <button
+                        onClick={() => setIsMenuOpen(!isMenuOpen)}
+                        className="shrink-0 rounded-lg transition-colors hover:bg-gray-100"
+                        aria-label="Toggle mobile menu"
+                      >
+                        {isMenuOpen ? (
+                          <X className="h-6 w-6 text-gray-700" />
+                        ) : (
+                          <Menu className="h-6 w-6 text-gray-700" />
+                        )}
+                      </button>
+                    </div>
+                  </>
+                ) : (
+                  /* Logged-out state */
+                  <>
+                    <div className="hidden items-center gap-4 md:flex">
+                      <Link
+                        href="/signin"
+                        className="bg-[linear-gradient(0deg,#202020_0%,#515151_100%)] bg-clip-text text-base leading-[140%] font-bold [-webkit-background-clip:text] [-webkit-text-fill-color:transparent]"
+                      >
+                        Sign in
+                      </Link>
+                      <Link href="/signup">
+                        <CTAButton variant="primary" size="sm">
+                          <span>Get Started</span>
+                        </CTAButton>
+                      </Link>
+                    </div>
+                    <div className="flex gap-2 md:hidden">
+                      <button
+                        onClick={() => setIsMenuOpen(!isMenuOpen)}
+                        className="shrink-0 rounded-lg transition-colors hover:bg-gray-100"
+                        aria-label="Toggle mobile menu"
+                      >
+                        {isMenuOpen ? (
+                          <X className="h-6 w-6 text-gray-700" />
+                        ) : (
+                          <Menu className="h-6 w-6 text-gray-700" />
+                        )}
+                      </button>
+                      <Link href="/signup">
+                        <CTAButton size="sm" variant="secondary">
+                          Sign In
+                        </CTAButton>
+                      </Link>
+                    </div>
+                  </>
+                )}
               </div>
             </div>
           </div>
@@ -152,18 +207,33 @@ export default function Header({ solid = false }: HeaderProps) {
                 ))}
               </nav>
 
-              <div className="flex flex-col gap-2.5">
-                <Link href="/signin">
-                  <CTAButton variant="secondary" size="lg" className="w-full">
-                    Sign In
-                  </CTAButton>
-                </Link>
-                <Link href="/signup">
-                  <CTAButton variant="primary" size="lg" className="w-full">
-                    Get Started
-                  </CTAButton>
-                </Link>
-              </div>
+              {isLoggedIn ? (
+                <div className="flex flex-col gap-2.5">
+                  <Link href="/dashboard" onClick={closeMobileMenu}>
+                    <CTAButton variant="primary" size="lg" className="w-full">
+                      Dashboard
+                    </CTAButton>
+                  </Link>
+                  <button onClick={handleSignOut}>
+                    <CTAButton variant="secondary" size="lg" className="w-full">
+                      Sign Out
+                    </CTAButton>
+                  </button>
+                </div>
+              ) : (
+                <div className="flex flex-col gap-2.5">
+                  <Link href="/signin" onClick={closeMobileMenu}>
+                    <CTAButton variant="secondary" size="lg" className="w-full">
+                      Sign In
+                    </CTAButton>
+                  </Link>
+                  <Link href="/signup" onClick={closeMobileMenu}>
+                    <CTAButton variant="primary" size="lg" className="w-full">
+                      Get Started
+                    </CTAButton>
+                  </Link>
+                </div>
+              )}
             </div>
           </div>
         </div>

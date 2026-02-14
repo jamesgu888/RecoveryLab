@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createSessionToken, startSession, sendSpeakTask } from "@/lib/recoverai/heygen";
+import { addEventAdmin } from "@/lib/recoverai/store-admin";
 
 /**
  * POST /api/avatar/interactive-session
@@ -67,6 +68,19 @@ export async function POST(req: NextRequest) {
 
     // 3. Send initial message for avatar to speak
     await sendSpeakTask(session_id, session_token, initialMessage);
+
+    // Log consultation event so it appears on the dashboard
+    const consultPatientId = body.session_id || session_id;
+    await addEventAdmin({
+      patient_id: consultPatientId,
+      source: "zingage_call",
+      type: "consultation",
+      payload: {
+        gait_type: visual_analysis.gait_type,
+        severity_score: visual_analysis.severity_score,
+        avatar_session_id: session_id,
+      },
+    }).catch((e) => console.error("Failed to log consultation event:", e));
 
     console.log(`Session created: ${session_id}`);
     console.log(`LiveKit room: ${livekit_url}`);
