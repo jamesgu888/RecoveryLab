@@ -96,19 +96,21 @@ ${schedule_text}`,
           eventDate.setDate(today.getDate() + i);
           
           const eventRef = calendarRef.doc();
-          const eventData = {
+          const eventData: any = {
             title: exercise.title,
             date: eventDate.toISOString().split('T')[0],
             time: exercise.preferred_time || "09:00",
-            sets: exercise.sets,
-            reps: exercise.reps,
-            duration: exercise.duration_minutes,
-            instructions: exercise.instructions,
             completed: false,
             notification_sent: false,
             created_at: new Date().toISOString(),
             source: "pt_schedule",
           };
+          
+          // Only add optional fields if they exist
+          if (exercise.sets) eventData.sets = exercise.sets;
+          if (exercise.reps) eventData.reps = exercise.reps;
+          if (exercise.duration_minutes) eventData.duration = exercise.duration_minutes;
+          if (exercise.instructions) eventData.instructions = exercise.instructions;
           
           batch.set(eventRef, eventData);
           eventsCreated.push(eventData);
@@ -130,19 +132,21 @@ ${schedule_text}`,
               eventDate.setDate(today.getDate() + daysUntilTarget + (week * 7));
               
               const eventRef = calendarRef.doc();
-              const eventData = {
+              const eventData: any = {
                 title: exercise.title,
                 date: eventDate.toISOString().split('T')[0],
                 time: exercise.preferred_time || "09:00",
-                sets: exercise.sets,
-                reps: exercise.reps,
-                duration: exercise.duration_minutes,
-                instructions: exercise.instructions,
                 completed: false,
                 notification_sent: false,
                 created_at: new Date().toISOString(),
                 source: "pt_schedule",
               };
+              
+              // Only add optional fields if they exist
+              if (exercise.sets) eventData.sets = exercise.sets;
+              if (exercise.reps) eventData.reps = exercise.reps;
+              if (exercise.duration_minutes) eventData.duration = exercise.duration_minutes;
+              if (exercise.instructions) eventData.instructions = exercise.instructions;
               
               batch.set(eventRef, eventData);
               eventsCreated.push(eventData);
@@ -157,19 +161,21 @@ ${schedule_text}`,
               eventDate.setDate(today.getDate() + daysUntilTarget + (week * 7));
               
               const eventRef = calendarRef.doc();
-              const eventData = {
+              const eventData: any = {
                 title: exercise.title,
                 date: eventDate.toISOString().split('T')[0],
                 time: exercise.preferred_time || "09:00",
-                sets: exercise.sets,
-                reps: exercise.reps,
-                duration: exercise.duration_minutes,
-                instructions: exercise.instructions,
                 completed: false,
                 notification_sent: false,
                 created_at: new Date().toISOString(),
                 source: "pt_schedule",
               };
+              
+              // Only add optional fields if they exist
+              if (exercise.sets) eventData.sets = exercise.sets;
+              if (exercise.reps) eventData.reps = exercise.reps;
+              if (exercise.duration_minutes) eventData.duration = exercise.duration_minutes;
+              if (exercise.instructions) eventData.instructions = exercise.instructions;
               
               batch.set(eventRef, eventData);
               eventsCreated.push(eventData);

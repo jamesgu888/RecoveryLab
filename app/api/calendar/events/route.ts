@@ -78,14 +78,48 @@ export async function GET(request: NextRequest): Promise<NextResponse> {
       htmlLink: e.htmlLink || "",
     }));
 
+    // Also fetch Firestore calendar events (from PT schedule uploads)
+    const firestoreEventsSnap = await adminDb
+      .collection("users")
+      .doc(userId)
+      .collection("calendar")
+      .where("date", ">=", timeMin?.split('T')[0] || new Date().toISOString().split('T')[0])
+      .where("date", "<=", timeMax?.split('T')[0] || new Date(Date.now() + 365 * 24 * 60 * 60 * 1000).toISOString().split('T')[0])
+      .get();
+
+    const firestoreEvents: CalendarEvent[] = firestoreEventsSnap.docs.map((doc) => {
+      const data = doc.data();
+      const dateStr = data.date; // YYYY-MM-DD
+      const time = data.time || "09:00"; // HH:MM
+      const startDateTime = `${dateStr}T${time}:00`;
+      const endDateTime = new Date(new Date(startDateTime).getTime() + 60 * 60 * 1000).toISOString();
+      
+      return {
+        id: doc.id,
+        summary: data.title || "Exercise",
+        description: `${data.sets && data.reps ? `Sets/Reps: ${data.sets}x${data.reps}\n` : ''}${data.instructions ? `Instructions: ${data.instructions}` : ''}`,
+        start: startDateTime,
+        end: endDateTime,
+        htmlLink: "",
+      };
+    });
+
+    // Merge both event sources
+    const allEvents = [...events, ...firestoreEvents];
+
     console.log(
-      `[calendar/events] Found ${allItems.length} total events, ${gaitGuardEvents.length} RecoveryLab events`
+      `[calendar/events] Found ${allItems.length} Google Calendar events, ${gaitGuardEvents.length} RecoveryLab events, ${firestoreEvents.length} Firestore events`
     );
 
     return NextResponse.json({
       success: true,
-      events,
-      debug: { total: allItems.length, filtered: gaitGuardEvents.length },
+      events: allEvents,
+      debug: { 
+        google_total: allItems.length, 
+        google_filtered: gaitGuardEvents.length,
+        firestore: firestoreEvents.length,
+        combined: allEvents.length
+      },
     });
   } catch (error) {
     console.error("[calendar/events] Error:", error);
