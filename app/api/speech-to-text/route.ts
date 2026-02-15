@@ -40,7 +40,7 @@ export async function POST(req: NextRequest) {
       languageCode: "en",
     });
 
-    const text = result.text?.trim() || "";
+    const text = ((result as any).text ?? "").trim();
     console.log(`[STT] Transcribed: "${text}"`);
 
     return NextResponse.json({ success: true, text });
