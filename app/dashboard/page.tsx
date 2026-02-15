@@ -213,9 +213,17 @@ function eventDescription(event: PatientEvent): string {
   return p.summary || p.notes || "Activity recorded";
 }
 
-function ActivityItem({ event }: { event: PatientEvent }) {
+function hasTranscript(event: PatientEvent): boolean {
+  return !!(event.payload?.transcript && event.payload.transcript.length > 0);
+}
+
+function ActivityItem({ event, onClick }: { event: PatientEvent; onClick?: () => void }) {
+  const clickable = hasTranscript(event);
   return (
-    <div className="flex items-start gap-3 py-3">
+    <div
+      className={`flex items-start gap-3 py-3 ${clickable ? "cursor-pointer rounded-lg transition-colors hover:bg-[rgba(32,32,32,0.02)]" : ""}`}
+      onClick={clickable ? onClick : undefined}
+    >
       <EventIcon event={event} />
       <div className="min-w-0 flex-1">
         <div className="flex items-center justify-between gap-2">
@@ -229,6 +237,11 @@ function ActivityItem({ event }: { event: PatientEvent }) {
         <p className="mt-0.5 text-xs leading-relaxed text-[rgba(32,32,32,0.6)]">
           {eventDescription(event)}
         </p>
+        {clickable && (
+          <p className="mt-1 text-xs font-medium text-purple-500">
+            View transcript
+          </p>
+        )}
       </div>
     </div>
   );
@@ -257,6 +270,7 @@ export default function DashboardPage() {
   const [deleteTarget, setDeleteTarget] = useState<StoredAnalysis | null>(null);
   const [deleteCalendarToo, setDeleteCalendarToo] = useState(true);
   const [isDeleting, setIsDeleting] = useState(false);
+  const [transcriptEvent, setTranscriptEvent] = useState<PatientEvent | null>(null);
 
   useEffect(() => setMounted(true), []);
 
@@ -431,7 +445,11 @@ export default function DashboardPage() {
                   <div className="rounded-2xl border border-[rgba(32,32,32,0.06)] bg-white shadow-[0px_2px_8px_-2px_rgba(1,65,99,0.08)]">
                     <div className="divide-y divide-[rgba(32,32,32,0.06)] px-5">
                       {events.slice(0, 20).map((event) => (
-                        <ActivityItem key={event.id} event={event} />
+                        <ActivityItem
+                          key={event.id}
+                          event={event}
+                          onClick={() => setTranscriptEvent(event)}
+                        />
                       ))}
                     </div>
                     {events.length > 20 && (
@@ -537,6 +555,96 @@ export default function DashboardPage() {
                     Delete
                   </>
                 )}
+              </Button>
+            </div>
+          </div>
+        </div>,
+        document.body
+      )}
+
+      {/* Consultation transcript modal */}
+      {mounted && transcriptEvent && createPortal(
+        <div className="fixed inset-0 z-[9999] flex items-center justify-center">
+          <div className="absolute inset-0 bg-black/40 backdrop-blur-sm" onClick={() => setTranscriptEvent(null)} />
+          <div className="relative z-10 mx-4 flex w-full max-w-lg flex-col rounded-2xl border border-[rgba(32,32,32,0.08)] bg-white shadow-xl" style={{ maxHeight: "85vh" }}>
+            {/* Header */}
+            <div className="flex items-center justify-between border-b border-[rgba(32,32,32,0.06)] px-6 py-4">
+              <div className="flex items-center gap-3">
+                <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-purple-100">
+                  <Video className="h-5 w-5 text-purple-600" />
+                </div>
+                <div>
+                  <h3 className="text-lg font-bold text-[#202020]">Consultation Summary</h3>
+                  <p className="text-xs text-[rgba(32,32,32,0.5)]">{formatDate(transcriptEvent.created_at)}</p>
+                </div>
+              </div>
+              <button
+                onClick={() => setTranscriptEvent(null)}
+                className="rounded-full p-1 text-[rgba(32,32,32,0.4)] hover:bg-gray-100 hover:text-[#202020]"
+              >
+                <X className="h-5 w-5" />
+              </button>
+            </div>
+
+            {/* Content */}
+            <div className="flex-1 overflow-y-auto px-6 py-5">
+              {/* Summary */}
+              {transcriptEvent.payload?.summary && (
+                <div className="mb-5">
+                  <h4 className="mb-2 text-sm font-bold text-[#202020]">Summary</h4>
+                  <p className="text-sm leading-relaxed text-[rgba(32,32,32,0.7)]">
+                    {transcriptEvent.payload.summary}
+                  </p>
+                </div>
+              )}
+
+              {/* Key Points */}
+              {transcriptEvent.payload?.key_points && transcriptEvent.payload.key_points.length > 0 && (
+                <div className="mb-5">
+                  <h4 className="mb-2 text-sm font-bold text-[#202020]">Key Points</h4>
+                  <ul className="space-y-2">
+                    {transcriptEvent.payload.key_points.map((point: string, i: number) => (
+                      <li key={i} className="flex items-start gap-2 text-sm leading-relaxed text-[rgba(32,32,32,0.7)]">
+                        <span className="mt-1.5 h-1.5 w-1.5 shrink-0 rounded-full bg-purple-400" />
+                        {point}
+                      </li>
+                    ))}
+                  </ul>
+                </div>
+              )}
+
+              {/* Transcript */}
+              {transcriptEvent.payload?.transcript && transcriptEvent.payload.transcript.length > 0 && (
+                <div>
+                  <h4 className="mb-2 text-sm font-bold text-[#202020]">Full Transcript</h4>
+                  <div className="space-y-3">
+                    {transcriptEvent.payload.transcript.map((msg: { role: string; content: string }, i: number) => (
+                      <div
+                        key={i}
+                        className={`rounded-lg p-3 ${
+                          msg.role === "user" ? "ml-4 bg-blue-50" : "mr-4 bg-gray-50"
+                        }`}
+                      >
+                        <p className="mb-0.5 text-xs font-medium text-[rgba(32,32,32,0.45)]">
+                          {msg.role === "user" ? "You" : "Therapist"}
+                        </p>
+                        <p className="text-sm leading-relaxed text-[rgba(32,32,32,0.75)]">{msg.content}</p>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
+            </div>
+
+            {/* Footer */}
+            <div className="border-t border-[rgba(32,32,32,0.06)] px-6 py-4">
+              <Button
+                variant="modern-outline"
+                size="modern-lg"
+                onClick={() => setTranscriptEvent(null)}
+                className="w-full"
+              >
+                Close
               </Button>
             </div>
           </div>

@@ -1,9 +1,8 @@
 "use client";
 
-import { Suspense, useEffect, useRef, useState } from "react";
-import { useSearchParams } from "next/navigation";
-import { ArrowLeft, Mic, MicOff, Video as VideoIcon, VideoOff, Loader2 } from "lucide-react";
-import { Button } from "@/components/ui/button";
+import { Suspense, useCallback, useEffect, useRef, useState } from "react";
+import { useSearchParams, useRouter } from "next/navigation";
+import { ArrowLeft, Mic, MicOff, Loader2, Send } from "lucide-react";
 import Link from "next/link";
 
 interface Message {
@@ -35,20 +34,318 @@ function ConsultationContent() {
   const avatarId = searchParams.get("avatar_id");
   const avatarName = searchParams.get("avatar_name");
   const gaitContext = searchParams.get("gait_context");
-  
+  const patientId = searchParams.get("patient_id");
+
+  const router = useRouter();
   const videoRef = useRef<HTMLDivElement>(null);
-  const recognitionRef = useRef<any>(null);
   const audioRef = useRef<HTMLAudioElement | null>(null);
-  
+  const micStreamRef = useRef<MediaStream | null>(null);
+  const analyserRef = useRef<AnalyserNode | null>(null);
+  const audioCtxRef = useRef<AudioContext | null>(null);
+  const conversationRef = useRef<Message[]>([]);
+  const transcriptSavedRef = useRef(false);
+  const sessionEndedRef = useRef(false);
+  const isListeningRef = useRef(false);
+
+  // MediaRecorder refs for ElevenLabs STT
+  const recorderRef = useRef<MediaRecorder | null>(null);
+  const chunksRef = useRef<Blob[]>([]);
+  const silenceTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const isSpeakingVoiceRef = useRef(false); // tracks if user voice is detected
+  const isTranscribingRef = useRef(false);
+
   const [isConnecting, setIsConnecting] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  const [isMuted, setIsMuted] = useState(false);
-  const [isVideoEnabled, setIsVideoEnabled] = useState(true);
   const [conversationHistory, setConversationHistory] = useState<Message[]>([]);
   const [isListening, setIsListening] = useState(false);
   const [status, setStatus] = useState("Connecting...");
   const [hasGreeted, setHasGreeted] = useState(false);
   const [isSpeaking, setIsSpeaking] = useState(false);
+  const [micLevel, setMicLevel] = useState(0);
+  const [interimText, setInterimText] = useState("");
+  const [textInput, setTextInput] = useState("");
+  const [isProcessing, setIsProcessing] = useState(false);
+
+  // Keep ref in sync with state
+  useEffect(() => {
+    conversationRef.current = conversationHistory;
+  }, [conversationHistory]);
+
+  // Save transcript to server
+  const saveTranscript = useCallback(async () => {
+    if (transcriptSavedRef.current) return;
+    const messages = conversationRef.current;
+    if (!sessionId || !patientId || messages.length === 0) return;
+
+    transcriptSavedRef.current = true;
+    try {
+      await fetch("/api/avatar/save-transcript", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          avatar_session_id: sessionId,
+          patient_id: patientId,
+          conversation_history: messages,
+        }),
+      });
+      console.log("[Consultation] Transcript saved");
+    } catch (err) {
+      console.error("[Consultation] Failed to save transcript:", err);
+      transcriptSavedRef.current = false;
+    }
+  }, [sessionId, patientId]);
+
+  // Save transcript on page unload
+  useEffect(() => {
+    const handleBeforeUnload = () => {
+      if (conversationRef.current.length > 0 && !transcriptSavedRef.current && sessionId && patientId) {
+        navigator.sendBeacon(
+          "/api/avatar/save-transcript",
+          new Blob(
+            [JSON.stringify({
+              avatar_session_id: sessionId,
+              patient_id: patientId,
+              conversation_history: conversationRef.current,
+            })],
+            { type: "application/json" }
+          )
+        );
+      }
+    };
+
+    window.addEventListener("beforeunload", handleBeforeUnload);
+    return () => {
+      window.removeEventListener("beforeunload", handleBeforeUnload);
+      isListeningRef.current = false;
+      stopRecording();
+      analyserRef.current = null;
+      if (audioCtxRef.current) { try { audioCtxRef.current.close(); } catch { /* */ } audioCtxRef.current = null; }
+      if (micStreamRef.current) {
+        micStreamRef.current.getTracks().forEach((t) => t.stop());
+        micStreamRef.current = null;
+      }
+      saveTranscript();
+    };
+  }, [saveTranscript, sessionId, patientId]);
+
+  // Release mic stream helper
+  const releaseMic = () => {
+    isListeningRef.current = false;
+    stopRecording();
+    analyserRef.current = null;
+    if (audioCtxRef.current) { try { audioCtxRef.current.close(); } catch { /* */ } audioCtxRef.current = null; }
+    if (micStreamRef.current) {
+      micStreamRef.current.getTracks().forEach((t) => t.stop());
+      micStreamRef.current = null;
+    }
+    if (audioRef.current) {
+      audioRef.current.pause();
+      audioRef.current = null;
+    }
+    setMicLevel(0);
+  };
+
+  // Handle "End Session" button
+  const handleEndSession = async () => {
+    sessionEndedRef.current = true;
+    // Stop audio immediately so user doesn't hear speech after clicking end
+    if (audioRef.current) {
+      audioRef.current.pause();
+      audioRef.current.src = "";
+      audioRef.current = null;
+    }
+    releaseMic();
+    // Save transcript in background — don't block navigation
+    saveTranscript();
+    router.push("/dashboard");
+  };
+
+  // Stop the MediaRecorder
+  const stopRecording = () => {
+    if (silenceTimerRef.current) {
+      clearTimeout(silenceTimerRef.current);
+      silenceTimerRef.current = null;
+    }
+    if (recorderRef.current && recorderRef.current.state !== "inactive") {
+      try { recorderRef.current.stop(); } catch { /* */ }
+    }
+    recorderRef.current = null;
+    chunksRef.current = [];
+    isSpeakingVoiceRef.current = false;
+  };
+
+  // Send recorded audio to ElevenLabs STT
+  const transcribeAudio = async (audioBlob: Blob) => {
+    if (audioBlob.size < 1000 || isTranscribingRef.current) return; // Skip tiny clips
+    isTranscribingRef.current = true;
+    setInterimText("Transcribing...");
+
+    try {
+      const formData = new FormData();
+      formData.append("audio", audioBlob, "recording.webm");
+
+      const res = await fetch("/api/speech-to-text", {
+        method: "POST",
+        body: formData,
+      });
+
+      if (!res.ok) {
+        console.error("[Consultation] STT request failed:", res.status);
+        setInterimText("");
+        return;
+      }
+
+      const data = await res.json();
+      setInterimText("");
+
+      if (data.text && data.text.trim()) {
+        console.log("[Consultation] User said:", data.text);
+
+        // If therapist is speaking, pause (user is interrupting)
+        if (audioRef.current && !audioRef.current.paused) {
+          console.log("[Consultation] User interrupted - pausing therapist");
+          audioRef.current.pause();
+          setIsSpeaking(false);
+        }
+
+        await handleUserMessage(data.text);
+      }
+    } catch (err) {
+      console.error("[Consultation] STT error:", err);
+      setInterimText("");
+    } finally {
+      isTranscribingRef.current = false;
+    }
+  };
+
+  // Start mic + MediaRecorder with silence detection
+  const startMicAndRecording = async () => {
+    if (typeof window === "undefined") return;
+
+    // Get mic permission
+    if (!micStreamRef.current) {
+      try {
+        micStreamRef.current = await navigator.mediaDevices.getUserMedia({ audio: true });
+        console.log("[Consultation] Microphone stream acquired");
+
+        // Set up Web Audio analyser for volume metering
+        const ctx = new AudioContext();
+        const source = ctx.createMediaStreamSource(micStreamRef.current);
+        const analyser = ctx.createAnalyser();
+        analyser.fftSize = 256;
+        analyser.smoothingTimeConstant = 0.4;
+        source.connect(analyser);
+        audioCtxRef.current = ctx;
+        analyserRef.current = analyser;
+
+        // Poll volume level
+        const dataArray = new Uint8Array(analyser.frequencyBinCount);
+        // Two-threshold hysteresis: high threshold to START detecting speech,
+        // low threshold to detect silence. Prevents background noise (~5-9% RMS)
+        // from keeping the silence timer reset indefinitely.
+        const SPEECH_START_THRESHOLD = 0.10; // Must exceed this to begin speech detection
+        const SPEECH_STOP_THRESHOLD = 0.03;  // Must drop below this to trigger silence timer
+        const SILENCE_DURATION = 1500; // ms of silence before sending for transcription
+
+        const poll = () => {
+          if (!analyserRef.current) return;
+          analyserRef.current.getByteFrequencyData(dataArray);
+          let sum = 0;
+          for (let i = 0; i < dataArray.length; i++) sum += dataArray[i] * dataArray[i];
+          const rms = Math.sqrt(sum / dataArray.length) / 255;
+          setMicLevel(rms);
+
+          // Voice activity detection with two-threshold hysteresis
+          if (isListeningRef.current && recorderRef.current?.state === "recording") {
+            if (!isSpeakingVoiceRef.current) {
+              // Not currently speaking — need high threshold to start
+              if (rms > SPEECH_START_THRESHOLD) {
+                isSpeakingVoiceRef.current = true;
+                setInterimText("Listening...");
+              }
+            } else {
+              // Currently speaking — use hysteresis thresholds
+              if (rms > SPEECH_START_THRESHOLD) {
+                // Clearly speaking — clear any silence timer
+                if (silenceTimerRef.current) {
+                  clearTimeout(silenceTimerRef.current);
+                  silenceTimerRef.current = null;
+                }
+              } else if (rms < SPEECH_STOP_THRESHOLD && !silenceTimerRef.current) {
+                // Dropped below stop threshold — start silence timer
+                silenceTimerRef.current = setTimeout(() => {
+                  if (!isListeningRef.current || isTranscribingRef.current) return;
+                  isSpeakingVoiceRef.current = false;
+                  silenceTimerRef.current = null;
+
+                  // Stop recorder to trigger ondataavailable with the full clip
+                  if (recorderRef.current && recorderRef.current.state === "recording") {
+                    recorderRef.current.stop();
+                  }
+                }, SILENCE_DURATION);
+              }
+              // If between thresholds (0.03–0.10), do nothing — let existing timer continue
+              // or keep speaking state without resetting timer
+            }
+          }
+
+          requestAnimationFrame(poll);
+        };
+        poll();
+      } catch (err) {
+        console.error("[Consultation] Microphone permission denied:", err);
+        setStatus("Microphone access denied — please allow mic permission");
+        return;
+      }
+    }
+
+    // Start MediaRecorder
+    startNewRecording();
+
+    isListeningRef.current = true;
+    setIsListening(true);
+    setStatus("Listening...");
+  };
+
+  // Start a new recording session (called initially and after each transcription)
+  const startNewRecording = () => {
+    if (!micStreamRef.current) return;
+
+    chunksRef.current = [];
+    const recorder = new MediaRecorder(micStreamRef.current, {
+      mimeType: MediaRecorder.isTypeSupported("audio/webm;codecs=opus")
+        ? "audio/webm;codecs=opus"
+        : "audio/webm",
+    });
+
+    recorder.ondataavailable = (e) => {
+      if (e.data.size > 0) {
+        chunksRef.current.push(e.data);
+      }
+    };
+
+    recorder.onstop = () => {
+      // Combine chunks into a single blob and transcribe
+      if (chunksRef.current.length > 0) {
+        const audioBlob = new Blob(chunksRef.current, { type: "audio/webm" });
+        chunksRef.current = [];
+        transcribeAudio(audioBlob);
+      }
+
+      // Start a new recording session if still listening
+      if (isListeningRef.current) {
+        setTimeout(() => {
+          if (isListeningRef.current) {
+            startNewRecording();
+          }
+        }, 100);
+      }
+    };
+
+    recorder.start();
+    recorderRef.current = recorder;
+    console.log("[Consultation] MediaRecorder started");
+  };
 
   // Connect to LiveKit room
   const connectToRoom = async () => {
@@ -57,10 +354,8 @@ function ConsultationContent() {
       const { Room } = window.LivekitClient;
       const room = new Room();
 
-      // Handle track subscriptions (avatar video)
       room.on("trackSubscribed", (track: any) => {
         console.log("[Consultation] Track subscribed:", track.kind);
-        
         if (track.kind === "video" && videoRef.current) {
           const element = track.attach();
           videoRef.current.innerHTML = "";
@@ -75,14 +370,14 @@ function ConsultationContent() {
         track.detach();
       });
 
-      room.on("connected", () => {
+      room.on("connected", async () => {
         console.log("[Consultation] Connected to LiveKit");
         setIsConnecting(false);
         setStatus("Connected");
-        
-        // Start speech recognition immediately so user can interrupt
-        startSpeechRecognition();
-        
+
+        // Start mic and recording
+        await startMicAndRecording();
+
         // Trigger initial greeting
         if (!hasGreeted) {
           generateInitialGreeting();
@@ -91,11 +386,7 @@ function ConsultationContent() {
 
       room.on("disconnected", () => {
         console.log("[Consultation] Disconnected");
-        if (recognitionRef.current) recognitionRef.current.stop();
-        if (audioRef.current) {
-          audioRef.current.pause();
-          audioRef.current = null;
-        }
+        releaseMic();
       });
 
       await room.connect(livekitUrl, livekitToken);
@@ -109,7 +400,7 @@ function ConsultationContent() {
   // Generate and play initial greeting
   const generateInitialGreeting = async () => {
     if (hasGreeted || !gaitContext) return;
-    
+
     setStatus("Therapist is greeting you...");
     setHasGreeted(true);
 
@@ -131,8 +422,7 @@ function ConsultationContent() {
       const data = await response.json();
       setConversationHistory(data.conversation_history);
       await playAudioToAvatar(data.audio, data.text);
-      
-      // Speech recognition already started, just update status
+
       setStatus("Listening...");
     } catch (err) {
       console.error("[Consultation] Greeting failed:", err);
@@ -140,76 +430,11 @@ function ConsultationContent() {
     }
   };
 
-  // Initialize continuous speech recognition
-  const startSpeechRecognition = () => {
-    if (typeof window === "undefined") return;
-    
-    // Don't start if already running
-    if (recognitionRef.current && isListening) {
-      console.log("[Consultation] Speech recognition already running");
-      return;
-    }
-
-    const SpeechRecognition =
-      (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition;
-
-    if (!SpeechRecognition) {
-      console.error("[Consultation] Speech recognition not supported");
-      return;
-    }
-
-    const recognition = new SpeechRecognition();
-    recognition.continuous = true;
-    recognition.interimResults = false;
-    recognition.lang = "en-US";
-
-    recognition.onstart = () => {
-      console.log("[Consultation] Speech recognition started");
-      setIsListening(true);
-      // Don't pause audio anymore - allow interruption
-    };
-
-    recognition.onresult = async (event: any) => {
-      const transcript = event.results[event.results.length - 1][0].transcript;
-      console.log("[Consultation] User said:", transcript);
-      
-      // If therapist is speaking, pause the audio (user is interrupting)
-      if (audioRef.current && !audioRef.current.paused) {
-        console.log("[Consultation] User interrupted - pausing therapist");
-        audioRef.current.pause();
-        setIsSpeaking(false);
-      }
-      
-      await handleUserMessage(transcript);
-    };
-
-    recognition.onerror = (event: any) => {
-      console.error("[Consultation] Recognition error:", event.error);
-      if (event.error === "no-speech") {
-        recognition.start(); // Restart
-      }
-    };
-
-    recognition.onend = () => {
-      // Auto-restart if user still wants to listen
-      if (isListening && recognitionRef.current === recognition) {
-        console.log("[Consultation] Restarting speech recognition");
-        recognition.start();
-      }
-    };
-
-    recognitionRef.current = recognition;
-    
-    try {
-      recognition.start();
-    } catch (err) {
-      console.error("[Consultation] Failed to start recognition:", err);
-    }
-  };
-
   // Handle user message
   const handleUserMessage = async (userMessage: string) => {
+    if (!userMessage.trim() || isProcessing) return;
     try {
+      setIsProcessing(true);
       setStatus("Processing...");
 
       const response = await fetch("/api/avatar/chat", {
@@ -217,7 +442,7 @@ function ConsultationContent() {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           user_message: userMessage,
-          conversation_history: conversationHistory,
+          conversation_history: conversationRef.current,
           gait_context: gaitContext || "",
           avatar_id: avatarId,
           avatar_name: avatarName,
@@ -229,37 +454,46 @@ function ConsultationContent() {
       const data = await response.json();
       setConversationHistory(data.conversation_history);
       await playAudioToAvatar(data.audio, data.text);
-      
+
       setStatus("Listening...");
     } catch (err) {
       console.error("[Consultation] Message processing failed:", err);
-      setStatus("Error - retrying...");
+      setStatus("Error - try again");
+    } finally {
+      setIsProcessing(false);
     }
   };
 
-  // Play audio directly in browser (bypass HeyGen audio)
+  // Handle text input submit
+  const handleTextSubmit = (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!textInput.trim() || isProcessing) return;
+    const msg = textInput.trim();
+    setTextInput("");
+    handleUserMessage(msg);
+  };
+
+  // Play audio directly in browser
   const playAudioToAvatar = async (base64Audio: string, text: string) => {
+    // Don't play if session has ended
+    if (sessionEndedRef.current) return;
+
     try {
       console.log("[Consultation] Playing audio:", text);
-      
-      // Stop any currently playing audio
+
       if (audioRef.current) {
         audioRef.current.pause();
         audioRef.current = null;
       }
 
-      // Create audio element from base64 MP3
       const audio = new Audio(`data:audio/mp3;base64,${base64Audio}`);
       audioRef.current = audio;
 
-      // Don't pause speech recognition - allow user to interrupt
       setIsSpeaking(true);
       setStatus("Therapist speaking... (you can interrupt)");
 
-      // Play the audio
       await audio.play();
 
-      // Wait for audio to finish
       await new Promise<void>((resolve) => {
         audio.onended = () => {
           console.log("[Consultation] Audio finished");
@@ -267,7 +501,6 @@ function ConsultationContent() {
           setStatus("Listening...");
           resolve();
         };
-        
         audio.onerror = (err) => {
           console.error("[Consultation] Audio playback error:", err);
           setIsSpeaking(false);
@@ -276,7 +509,7 @@ function ConsultationContent() {
         };
       });
 
-      console.log("[Consultation] ✅ Audio playback complete");
+      console.log("[Consultation] Audio playback complete");
     } catch (err) {
       console.error("[Consultation] Audio playback failed:", err);
       setIsSpeaking(false);
@@ -286,29 +519,24 @@ function ConsultationContent() {
 
   // Toggle listening
   const toggleListening = () => {
-    if (!recognitionRef.current) return;
-
-    if (isListening) {
-      recognitionRef.current.stop();
+    if (isListeningRef.current) {
+      isListeningRef.current = false;
+      stopRecording();
       setIsListening(false);
       setStatus("Paused");
     } else {
-      recognitionRef.current.start();
-      setIsListening(true);
-      setStatus("Listening...");
+      startMicAndRecording();
     }
   };
 
-  // Add keyboard shortcut (Spacebar to toggle mic)
+  // Spacebar shortcut
   useEffect(() => {
     const handleKeyPress = (e: KeyboardEvent) => {
-      // Only toggle if spacebar and not typing in an input
       if (e.code === "Space" && !(e.target instanceof HTMLInputElement || e.target instanceof HTMLTextAreaElement)) {
         e.preventDefault();
         toggleListening();
       }
     };
-
     window.addEventListener("keydown", handleKeyPress);
     return () => window.removeEventListener("keydown", handleKeyPress);
   }, [isListening]);
@@ -323,21 +551,18 @@ function ConsultationContent() {
 
     console.log("[Consultation] Loading LiveKit SDK...");
 
-    // Check if LiveKit is already loaded
     if ((window as any).LivekitClient) {
       console.log("[Consultation] LiveKit SDK already loaded");
       connectToRoom();
       return;
     }
 
-    // Load LiveKit client SDK from CDN
     const script = document.createElement("script");
     script.src = "https://unpkg.com/@livekit/components-core@0.10.0/dist/livekit-client.umd.min.js";
     script.crossOrigin = "anonymous";
-    
+
     script.onload = () => {
       console.log("[Consultation] LiveKit SDK loaded successfully");
-      // Small delay to ensure SDK is fully initialized
       setTimeout(() => {
         if ((window as any).LivekitClient) {
           connectToRoom();
@@ -348,17 +573,14 @@ function ConsultationContent() {
         }
       }, 100);
     };
-    
-    script.onerror = (err) => {
-      console.error("[Consultation] Failed to load LiveKit SDK:", err);
-      // Try alternative CDN
+
+    script.onerror = () => {
       console.log("[Consultation] Trying alternative CDN...");
       const altScript = document.createElement("script");
       altScript.src = "https://cdn.jsdelivr.net/npm/livekit-client@2.5.7/dist/livekit-client.umd.min.js";
       altScript.crossOrigin = "anonymous";
-      
+
       altScript.onload = () => {
-        console.log("[Consultation] LiveKit SDK loaded from alternative CDN");
         setTimeout(() => {
           if ((window as any).LivekitClient) {
             connectToRoom();
@@ -368,16 +590,15 @@ function ConsultationContent() {
           }
         }, 100);
       };
-      
+
       altScript.onerror = () => {
-        console.error("[Consultation] Both CDNs failed");
         setError("Failed to load LiveKit SDK from CDN");
         setIsConnecting(false);
       };
-      
+
       document.body.appendChild(altScript);
     };
-    
+
     document.body.appendChild(script);
 
     return () => {
@@ -414,12 +635,13 @@ function ConsultationContent() {
       <header className="border-b border-gray-200 bg-white px-6 py-4">
         <div className="mx-auto flex max-w-7xl items-center justify-between">
           <div className="flex items-center gap-4">
-            <Link href="/analyze">
-              <Button variant="modern-outline" size="modern-sm" className="gap-2">
-                <ArrowLeft className="h-4 w-4" />
-                Back
-              </Button>
-            </Link>
+            <button
+              onClick={handleEndSession}
+              className="flex h-10 items-center gap-2 rounded-full border border-red-200 bg-white px-5 text-sm font-semibold text-red-600 shadow-sm transition-all hover:bg-red-50"
+            >
+              <ArrowLeft className="h-4 w-4" />
+              End Session
+            </button>
             <div>
               <h1 className="text-lg font-bold text-gray-900">Physical Therapy Consultation</h1>
               <p className="text-sm text-gray-500">
@@ -427,35 +649,74 @@ function ConsultationContent() {
               </p>
             </div>
           </div>
-          
+
           {/* Controls */}
-          <div className="flex items-center gap-6">
-            <div className="flex items-center gap-2">
-              {isSpeaking ? (
+          <div className="flex items-center gap-4">
+            {/* Audio level meter */}
+            {isListening && (
+              <div className="flex items-center gap-1.5">
+                <span className="text-xs font-medium text-[rgba(32,32,32,0.45)]">Mic</span>
+                <div className="flex h-6 items-end gap-[3px]">
+                  {[0.08, 0.15, 0.1, 0.2, 0.12, 0.18, 0.08].map((threshold, i) => {
+                    const barLevel = Math.min(1, micLevel / 0.35);
+                    const barHeight = Math.max(3, barLevel > threshold ? barLevel * 24 : 3);
+                    return (
+                      <div
+                        key={i}
+                        className="w-[3px] rounded-full transition-all duration-75"
+                        style={{
+                          height: `${barHeight}px`,
+                          backgroundColor:
+                            barLevel > 0.6
+                              ? "#22c55e"
+                              : barLevel > 0.2
+                                ? "#1DB3FB"
+                                : "rgba(32,32,32,0.15)",
+                        }}
+                      />
+                    );
+                  })}
+                </div>
+              </div>
+            )}
+
+            {/* Status text */}
+            <span className="text-sm text-[rgba(32,32,32,0.5)]">
+              {isSpeaking
+                ? "Therapist speaking..."
+                : isListening
+                  ? "Listening"
+                  : "Paused"}
+            </span>
+
+            {/* Mic toggle button */}
+            <button
+              onClick={toggleListening}
+              className={`relative flex h-10 items-center gap-2.5 rounded-full px-5 text-sm font-semibold transition-all ${
+                isListening
+                  ? "border border-red-200 bg-white text-red-600 shadow-sm hover:bg-red-50"
+                  : "border border-[rgba(32,32,32,0.06)] bg-[#202020] text-white shadow-[0_0_1px_3px_#494949_inset,0_6px_5px_0_rgba(0,0,0,0.55)_inset] hover:opacity-90"
+              }`}
+            >
+              {isListening ? (
                 <>
-                  <div className="w-3 h-3 rounded-full bg-blue-500 animate-pulse" />
-                  <span className="text-sm text-gray-600">Therapist speaking (you can interrupt)</span>
+                  <span className="relative flex h-2 w-2">
+                    <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-red-400 opacity-75" />
+                    <span className="relative inline-flex h-2 w-2 rounded-full bg-red-500" />
+                  </span>
+                  <MicOff className="h-4 w-4" />
+                  Mute
                 </>
               ) : (
                 <>
-                  <div className={`w-3 h-3 rounded-full ${isListening ? 'bg-red-500 animate-pulse' : 'bg-gray-400'}`} />
-                  <span className="text-sm text-gray-600">{isListening ? "Listening - speak anytime!" : "Paused"}</span>
+                  <Mic className="h-4 w-4" />
+                  Unmute
                 </>
               )}
-            </div>
-            
-            <div className="flex flex-col items-center gap-1">
-              <Button
-                onClick={toggleListening}
-                variant={isListening ? "modern-outline" : "modern-primary"}
-                size="modern-lg"
-                className={`gap-3 px-8 transition-all ${isListening ? 'bg-red-50 border-red-500 text-red-600 hover:bg-red-100' : 'bg-green-600 hover:bg-green-700'}`}
-              >
-                {isListening ? <MicOff className="h-5 w-5" /> : <Mic className="h-5 w-5" />}
-                {isListening ? "Pause Mic" : "Start Mic"}
-              </Button>
-              <span className="text-xs text-gray-500">Press SPACE</span>
-            </div>
+            </button>
+            <kbd className="hidden rounded-md border border-[rgba(32,32,32,0.1)] bg-[rgba(32,32,32,0.03)] px-1.5 py-0.5 text-[10px] font-medium text-[rgba(32,32,32,0.4)] sm:inline-block">
+              SPACE
+            </kbd>
           </div>
         </div>
       </header>
@@ -473,7 +734,7 @@ function ConsultationContent() {
                 </div>
               </div>
             )}
-            
+
             {error && (
               <div className="flex h-full items-center justify-center">
                 <div className="text-center text-white">
@@ -482,7 +743,7 @@ function ConsultationContent() {
                 </div>
               </div>
             )}
-            
+
             <div
               ref={videoRef}
               className="h-full w-full"
@@ -501,11 +762,11 @@ function ConsultationContent() {
                 </li>
                 <li className="flex items-start gap-2">
                   <span className="mt-0.5 h-1.5 w-1.5 shrink-0 rounded-full bg-[#1DB3FB]" />
-                  Use your microphone to ask questions about your analysis or exercises
+                  Speak naturally — your voice is transcribed automatically
                 </li>
                 <li className="flex items-start gap-2">
                   <span className="mt-0.5 h-1.5 w-1.5 shrink-0 rounded-full bg-[#1DB3FB]" />
-                  The therapist will provide personalized guidance based on your needs
+                  You can also type messages using the text input below
                 </li>
               </ul>
             </div>
@@ -513,30 +774,76 @@ function ConsultationContent() {
         </div>
 
         {/* Conversation Transcript */}
-        <div className="w-96 border-l border-gray-200 bg-white p-6 overflow-y-auto">
-          <h2 className="text-lg font-semibold text-gray-900 mb-4">Conversation</h2>
-
-          <div className="space-y-4">
-            {conversationHistory.map((msg, idx) => (
-              <div
-                key={idx}
-                className={`p-3 rounded-lg ${
-                  msg.role === "user" ? "bg-blue-50 ml-4" : "bg-gray-100 mr-4"
-                }`}
-              >
-                <p className="text-xs font-medium text-gray-500 mb-1">
-                  {msg.role === "user" ? "You" : "Therapist"}
-                </p>
-                <p className="text-sm text-gray-800">{msg.content}</p>
-              </div>
-            ))}
+        <div className="flex w-96 flex-col border-l border-gray-200 bg-white">
+          <div className="border-b border-gray-100 px-5 py-3">
+            <h2 className="text-sm font-bold text-[#202020]">Conversation</h2>
           </div>
 
-          {conversationHistory.length === 0 && (
-            <p className="text-sm text-gray-400 text-center mt-8">
-              Waiting for conversation...
-            </p>
-          )}
+          {/* Messages */}
+          <div className="flex-1 space-y-3 overflow-y-auto px-5 py-4">
+            {conversationHistory
+              .filter((msg) => msg.content !== "[START_CONSULTATION]")
+              .map((msg, idx) => (
+              <div
+                key={idx}
+                className={`rounded-xl p-3 ${
+                  msg.role === "user"
+                    ? "ml-6 bg-[#E0F5FF]"
+                    : "mr-6 bg-[rgba(32,32,32,0.04)]"
+                }`}
+              >
+                <p className="mb-0.5 text-[10px] font-semibold uppercase tracking-wider text-[rgba(32,32,32,0.4)]">
+                  {msg.role === "user" ? "You" : "Therapist"}
+                </p>
+                <p className="text-sm leading-relaxed text-[#202020]">{msg.content}</p>
+              </div>
+            ))}
+
+            {/* Live transcription preview */}
+            {interimText && (
+              <div className="ml-6 rounded-xl border border-dashed border-[#1DB3FB]/30 bg-[#E0F5FF]/40 p-3">
+                <p className="mb-0.5 text-[10px] font-semibold uppercase tracking-wider text-[#1DB3FB]">
+                  {interimText === "Transcribing..." ? "Processing..." : "Hearing you..."}
+                </p>
+                <p className="text-sm italic text-[rgba(32,32,32,0.6)]">{interimText}</p>
+              </div>
+            )}
+
+            {/* Processing indicator */}
+            {isProcessing && (
+              <div className="mr-6 flex items-center gap-2 rounded-xl bg-[rgba(32,32,32,0.04)] p-3">
+                <Loader2 className="h-3.5 w-3.5 animate-spin text-[rgba(32,32,32,0.4)]" />
+                <span className="text-xs text-[rgba(32,32,32,0.5)]">Therapist is thinking...</span>
+              </div>
+            )}
+
+            {conversationHistory.length === 0 && !isProcessing && (
+              <p className="pt-8 text-center text-xs text-[rgba(32,32,32,0.3)]">
+                Waiting for conversation...
+              </p>
+            )}
+          </div>
+
+          {/* Text input fallback */}
+          <form onSubmit={handleTextSubmit} className="border-t border-gray-100 px-4 py-3">
+            <div className="flex gap-2">
+              <input
+                type="text"
+                value={textInput}
+                onChange={(e) => setTextInput(e.target.value)}
+                placeholder="Type a message..."
+                disabled={isProcessing}
+                className="flex-1 rounded-full border border-gray-200 bg-gray-50 px-4 py-2 text-sm text-[#202020] placeholder-gray-400 focus:border-[#1DB3FB] focus:outline-none disabled:opacity-50"
+              />
+              <button
+                type="submit"
+                disabled={!textInput.trim() || isProcessing}
+                className="flex h-9 w-9 items-center justify-center rounded-full bg-[#1DB3FB] text-white transition-opacity hover:opacity-80 disabled:opacity-30"
+              >
+                <Send className="h-4 w-4" />
+              </button>
+            </div>
+          </form>
         </div>
       </main>
     </div>

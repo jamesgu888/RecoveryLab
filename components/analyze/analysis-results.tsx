@@ -185,6 +185,7 @@ export default function AnalysisResults({
         avatar_id: result.avatar_id || "",
         avatar_name: result.avatar_name || "",
         gait_context: result.gait_context,
+        patient_id: data.session_id,
       });
       
       window.open(`/consultation?${params.toString()}`, "_blank");

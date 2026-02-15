@@ -274,6 +274,51 @@ export async function sendSpeakTask(session_id: string, session_token: string, t
 }
 
 /**
+ * Close/stop an active session
+ */
+export async function closeSession(session_id: string) {
+  if (!LIVEAVATAR_API_KEY) {
+    return { success: false, error: "No LiveAvatar API key set" };
+  }
+
+  console.log(`[LiveAvatar] Closing session: ${session_id}`);
+
+  // Try multiple endpoint patterns — the API may use different formats
+  const endpoints = [
+    { url: `${LIVEAVATAR_BASE_URL}/sessions/${session_id}/stop`, method: "POST", body: null },
+    { url: `${LIVEAVATAR_BASE_URL}/sessions/stop`, method: "POST", body: JSON.stringify({ session_id }) },
+    { url: `${LIVEAVATAR_BASE_URL}/sessions/${session_id}`, method: "DELETE", body: null },
+  ];
+
+  for (const endpoint of endpoints) {
+    try {
+      console.log(`[LiveAvatar] Trying: ${endpoint.method} ${endpoint.url}`);
+      const res = await fetch(endpoint.url, {
+        method: endpoint.method,
+        headers: {
+          "X-API-KEY": LIVEAVATAR_API_KEY,
+          "Content-Type": "application/json",
+        },
+        ...(endpoint.body ? { body: endpoint.body } : {}),
+      });
+
+      if (res.ok) {
+        console.log(`[LiveAvatar] ✅ Session ${session_id} closed via ${endpoint.method} ${endpoint.url}`);
+        return { success: true };
+      }
+
+      const err = await res.text().catch(() => "Unknown error");
+      console.log(`[LiveAvatar] ${endpoint.method} ${endpoint.url} returned ${res.status}: ${err}`);
+    } catch (err) {
+      console.log(`[LiveAvatar] ${endpoint.method} ${endpoint.url} threw: ${err}`);
+    }
+  }
+
+  console.error(`[LiveAvatar] All close attempts failed for session ${session_id}`);
+  return { success: false, error: "All close endpoint patterns failed" };
+}
+
+/**
  * List all active sessions
  */
 export async function listActiveSessions() {
@@ -296,12 +341,29 @@ export async function listActiveSessions() {
     }
 
     const rawData = await res.json();
-    const sessions = rawData.data?.results || rawData.results || [];
+    console.log(`[LiveAvatar] List sessions raw response:`, JSON.stringify(rawData, null, 2));
+    const sessions = rawData.data?.sessions || rawData.data?.results || rawData.results || [];
     console.log(`[LiveAvatar] Found ${sessions.length} active session(s)`);
+    if (sessions.length > 0) {
+      console.log(`[LiveAvatar] Session keys:`, Object.keys(sessions[0]));
+    }
     return { success: true, data: sessions };
   } catch (err) {
     const msg = err instanceof Error ? err.message : String(err);
     console.error(`[LiveAvatar] Error listing sessions:`, msg);
     return { success: false, error: msg };
   }
+}
+
+/**
+ * Close all active sessions to free up concurrency slots
+ */
+export async function closeAllActiveSessions() {
+  const listResult = await listActiveSessions();
+  if (!listResult.success || !listResult.data?.length) return;
+
+  console.log(`[LiveAvatar] Closing ${listResult.data.length} stale session(s)...`);
+  await Promise.allSettled(
+    listResult.data.map((s: any) => closeSession(s.session_id || s.id))
+  );
 }

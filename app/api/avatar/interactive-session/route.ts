@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import { createSessionToken, startSession } from "@/lib/recoverai/heygen";
+import { createSessionToken, startSession, closeAllActiveSessions } from "@/lib/recoverai/heygen";
 import { addEventAdmin } from "@/lib/recoverai/store-admin";
 
 /**
@@ -57,10 +57,29 @@ export async function POST(req: NextRequest) {
       );
     }
 
-    const { session_id, session_token } = tokenResult.data;
+    let { session_id, session_token } = tokenResult.data;
 
     // 2. Start the session to get LiveKit room
-    const sessionResult = await startSession(session_token);
+    let sessionResult = await startSession(session_token);
+
+    // If concurrency limit hit, close stale sessions and retry once
+    if (!sessionResult.success && sessionResult.error?.includes("concurrency")) {
+      console.log("[LiveAvatar] Concurrency limit hit — closing stale sessions and retrying...");
+      await closeAllActiveSessions();
+
+      // Need a fresh token after closing sessions
+      const retryToken = await createSessionToken(avatar_id);
+      if (!retryToken.success || !retryToken.data) {
+        return NextResponse.json(
+          { success: false, error: "Failed to create session after cleanup" },
+          { status: 500 }
+        );
+      }
+      session_id = retryToken.data.session_id;
+      session_token = retryToken.data.session_token;
+      sessionResult = await startSession(session_token);
+    }
+
     if (!sessionResult.success || !sessionResult.data) {
       return NextResponse.json(
         { success: false, error: "Failed to start session" },

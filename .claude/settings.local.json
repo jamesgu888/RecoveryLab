@@ -31,7 +31,8 @@
       "WebFetch(domain:api.unsplash.com)",
       "Bash(curl:*)",
       "Bash(npx vercel:*)",
-      "Bash(vercel env pull:*)"
+      "Bash(vercel env pull:*)",
+      "Bash(tccutil reset:*)"
     ]
   }
 }
