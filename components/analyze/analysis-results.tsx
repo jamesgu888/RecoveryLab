@@ -108,6 +108,11 @@ export default function AnalysisResults({
   const [isCreatingConsultation, setIsCreatingConsultation] = useState(false);
   const [consultationError, setConsultationError] = useState<string | null>(null);
 
+  // Avatar selection state
+  const [avatars, setAvatars] = useState<Array<{ avatar_id: string; avatar_name: string }>>([]);
+  const [selectedAvatarId, setSelectedAvatarId] = useState<string>("513fd1b7-7ef9-466d-9af2-344e51eeb833");
+  const [loadingAvatars, setLoadingAvatars] = useState(false);
+
   // Poke SMS state
   const [phoneNumber, setPhoneNumber] = useState("");
   const [isSendingCheckin, setIsSendingCheckin] = useState(false);
@@ -119,6 +124,22 @@ export default function AnalysisResults({
   const [showSmsModal, setShowSmsModal] = useState(false);
   const [mounted, setMounted] = useState(false);
   useEffect(() => setMounted(true), []);
+
+  // Load avatars when modal opens
+  useEffect(() => {
+    if (showConsultationModal && avatars.length === 0 && !loadingAvatars) {
+      setLoadingAvatars(true);
+      fetch("/api/avatar/list")
+        .then(res => res.json())
+        .then(result => {
+          if (result.success && result.data) {
+            setAvatars(result.data);
+          }
+        })
+        .catch(console.error)
+        .finally(() => setLoadingAvatars(false));
+    }
+  }, [showConsultationModal, avatars.length, loadingAvatars]);
 
   const handleScheduleConsultation = async () => {
     setIsCreatingConsultation(true);
@@ -133,6 +154,7 @@ export default function AnalysisResults({
           coaching: data.coaching,
           session_id: data.session_id,
           user_id: user?.uid,
+          avatar_id: selectedAvatarId,
         }),
       });
 
@@ -142,8 +164,30 @@ export default function AnalysisResults({
         throw new Error(result.error || "Failed to create consultation session");
       }
 
+      // Open LiveKit demo page (simpler, known to work)
       const url = `https://meet.livekit.io/custom?liveKitUrl=${encodeURIComponent(result.livekit_url)}&token=${encodeURIComponent(result.livekit_client_token)}`;
       window.open(url, "_blank");
+      
+      // Also send the speak command via WebSocket after a delay
+      if (result.ws_url && result.initial_message) {
+        setTimeout(() => {
+          try {
+            const ws = new WebSocket(result.ws_url);
+            ws.onopen = () => {
+              console.log("WebSocket connected, sending speak command");
+              ws.send(JSON.stringify({
+                type: "speak",
+                text: result.initial_message,
+              }));
+              setTimeout(() => ws.close(), 1000);
+            };
+            ws.onerror = (err) => console.error("WebSocket error:", err);
+          } catch (err) {
+            console.error("Failed to connect WebSocket:", err);
+          }
+        }, 2000); // Wait 2 seconds for user to connect to LiveKit room
+      }
+      
       setShowConsultationModal(false);
     } catch (err) {
       const message = err instanceof Error ? err.message : "An error occurred";
@@ -250,6 +294,35 @@ export default function AnalysisResults({
             <p className="mb-6 text-sm leading-[170%] text-[rgba(32,32,32,0.65)]">
               Start a virtual consultation to discuss your analysis results with our AI recovery specialist. The session will open in a new window.
             </p>
+
+            {/* Avatar Selection Dropdown */}
+            <div className="mb-6">
+              <label className="mb-2 block text-sm font-medium text-[#202020]">
+                Select Your Therapist
+              </label>
+              <select
+                value={selectedAvatarId}
+                onChange={(e) => setSelectedAvatarId(e.target.value)}
+                disabled={loadingAvatars}
+                className="w-full rounded-lg border border-[rgba(32,32,32,0.12)] bg-white px-4 py-2.5 text-sm text-[#202020] transition-colors hover:border-[#1DB3FB] focus:border-[#1DB3FB] focus:outline-none focus:ring-2 focus:ring-[#1DB3FB]/20 disabled:opacity-50"
+              >
+                {loadingAvatars ? (
+                  <option>Loading avatars...</option>
+                ) : avatars.length > 0 ? (
+                  avatars.map((avatar) => (
+                    <option key={avatar.avatar_id} value={avatar.avatar_id}>
+                      {avatar.avatar_name}
+                    </option>
+                  ))
+                ) : (
+                  <>
+                    <option value="513fd1b7-7ef9-466d-9af2-344e51eeb833">Ann - Physical Therapist</option>
+                    <option value="7b888024-f8c9-4205-95e1-78ce01497bda">Shawn - Physical Therapist</option>
+                    <option value="55eec60c-d665-4972-a529-bbdcaf665ab8">Bryan - Fitness Coach</option>
+                  </>
+                )}
+              </select>
+            </div>
 
             {consultationError && (
               <div className="mb-4 rounded-lg border border-red-200 bg-red-50 p-3 text-sm text-red-700">

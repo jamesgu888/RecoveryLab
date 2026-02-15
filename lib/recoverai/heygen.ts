@@ -98,7 +98,7 @@ export async function createSessionToken(avatar_id?: string) {
         "Content-Type": "application/json",
       },
       body: JSON.stringify({
-        mode: "LITE", // We control the audio/text, LiveAvatar renders the avatar
+        mode: "LITE", // LITE mode - we control audio/text via WebSocket
         avatar_id: selectedAvatarId,
       }),
     });

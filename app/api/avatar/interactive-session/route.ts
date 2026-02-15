@@ -65,9 +65,12 @@ export async function POST(req: NextRequest) {
     }
 
     const { livekit_url, livekit_client_token } = sessionResult.data;
+    const ws_url = sessionResult.data.ws_url; // WebSocket URL for sending speak commands
 
-    // 3. Send initial message for avatar to speak
-    await sendSpeakTask(session_id, session_token, initialMessage);
+    // 3. Don't send speak task via REST API (not supported in LITE mode)
+    // Instead, return the message to be sent via WebSocket from frontend
+    console.log(`[LiveAvatar] Session ready. WebSocket URL: ${ws_url}`);
+    console.log(`[LiveAvatar] Initial message will be sent via WebSocket from client`);
 
     // Log consultation event so it appears on the dashboard
     const consultPatientId = body.session_id || session_id;
@@ -94,6 +97,7 @@ export async function POST(req: NextRequest) {
       session_token,
       livekit_url,
       livekit_client_token,
+      ws_url, // WebSocket URL for sending speak commands
       initial_message: initialMessage,
       user_id: user_id || null,
     });
