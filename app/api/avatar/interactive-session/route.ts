@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import { createSessionToken, startSession, sendSpeakTask } from "@/lib/recoverai/heygen";
+import { createSessionToken, startSession } from "@/lib/recoverai/heygen";
 import { addEventAdmin } from "@/lib/recoverai/store-admin";
 
 /**
@@ -28,7 +28,7 @@ import { addEventAdmin } from "@/lib/recoverai/store-admin";
 export async function POST(req: NextRequest) {
   try {
     const body = await req.json();
-    const { visual_analysis, coaching, avatar_id, user_id } = body;
+    const { visual_analysis, coaching, avatar_id, avatar_name, user_id } = body;
 
     if (!visual_analysis || !coaching) {
       return NextResponse.json(
@@ -37,14 +37,18 @@ export async function POST(req: NextRequest) {
       );
     }
 
-    // Create a conversational summary of the analysis for the avatar to speak
+    // Create a conversational summary for initial greeting
     const initialMessage = buildInitialAvatarMessage(visual_analysis, coaching);
+    
+    // Build comprehensive knowledge base for avatar conversations
+    const knowledgeBase = buildKnowledgeBase(visual_analysis, coaching);
 
     console.log("\n========== INTERACTIVE AVATAR SESSION ==========");
-    console.log("Creating streaming session for gait analysis results...");
-    console.log(`Initial message length: ${initialMessage.length} chars`);
+    console.log("Creating LITE mode session with custom audio...");
+    console.log(`Initial greeting length: ${initialMessage.length} chars`);
+    console.log(`Knowledge base length: ${knowledgeBase.length} chars`);
 
-    // 1. Create session token (LITE mode)
+    // 1. Create session token (LITE mode - we send audio via WebSocket)
     const tokenResult = await createSessionToken(avatar_id);
     if (!tokenResult.success || !tokenResult.data) {
       return NextResponse.json(
@@ -64,13 +68,11 @@ export async function POST(req: NextRequest) {
       );
     }
 
-    const { livekit_url, livekit_client_token } = sessionResult.data;
-    const ws_url = sessionResult.data.ws_url; // WebSocket URL for sending speak commands
+    const { livekit_url, livekit_client_token, ws_url } = sessionResult.data;
 
-    // 3. Don't send speak task via REST API (not supported in LITE mode)
-    // Instead, return the message to be sent via WebSocket from frontend
-    console.log(`[LiveAvatar] Session ready. WebSocket URL: ${ws_url}`);
-    console.log(`[LiveAvatar] Initial message will be sent via WebSocket from client`);
+    console.log(`[LiveAvatar] LITE mode session ready`);
+    console.log(`[LiveAvatar] Session ID: ${session_id}`);
+    console.log(`[LiveAvatar] WebSocket URL: ${ws_url}`);
 
     // Log consultation event so it appears on the dashboard
     const consultPatientId = body.session_id || session_id;
@@ -87,8 +89,7 @@ export async function POST(req: NextRequest) {
 
     console.log(`Session created: ${session_id}`);
     console.log(`LiveKit room: ${livekit_url}`);
-    console.log("Avatar is now speaking the analysis results...");
-    console.log("User can ask follow-up questions via voice.");
+    console.log("Avatar ready - audio will be sent via WebSocket");
     console.log("========== SESSION READY ==========\n");
 
     return NextResponse.json({
@@ -97,8 +98,11 @@ export async function POST(req: NextRequest) {
       session_token,
       livekit_url,
       livekit_client_token,
-      ws_url, // WebSocket URL for sending speak commands
-      initial_message: initialMessage,
+      ws_url,
+      avatar_id: avatar_id || null, // Pass avatar_id for voice selection
+      avatar_name: avatar_name || null, // Pass avatar_name for voice detection
+      initial_message: initialMessage, // For display purposes
+      gait_context: knowledgeBase, // Pass context to frontend for chat API
       user_id: user_id || null,
     });
   } catch (error) {
@@ -168,4 +172,153 @@ function buildInitialAvatarMessage(
   message += `Do you have any questions about your analysis or the exercises? I'm here to help!`;
 
   return message;
+}
+
+/**
+ * Builds a comprehensive knowledge base for the avatar to use in conversations.
+ * This allows the avatar to answer detailed questions about the gait analysis.
+ */
+function buildKnowledgeBase(
+  visual_analysis: any,
+  coaching: any
+): string {
+  const { 
+    gait_type, 
+    severity_score, 
+    visual_observations,
+    left_side_observations,
+    right_side_observations,
+    asymmetries,
+    postural_issues,
+  } = visual_analysis;
+  
+  const { 
+    explanation, 
+    likely_causes,
+    exercises, 
+    immediate_tip,
+    timeline,
+    warning_signs,
+  } = coaching;
+
+  let knowledge = "# Patient Gait Analysis Knowledge Base\n\n";
+  
+  // Overview
+  knowledge += "## Analysis Overview\n";
+  knowledge += `**Gait Type**: ${gait_type || 'normal'}\n`;
+  knowledge += `**Severity Score**: ${severity_score}/10\n`;
+  knowledge += `**Severity Level**: ${severity_score >= 7 ? 'Significant' : severity_score >= 4 ? 'Moderate' : 'Mild'}\n\n`;
+  
+  // Visual observations
+  if (visual_observations && visual_observations.length > 0) {
+    knowledge += "## Key Visual Observations\n";
+    visual_observations.forEach((obs: string, idx: number) => {
+      knowledge += `${idx + 1}. ${obs}\n`;
+    });
+    knowledge += "\n";
+  }
+  
+  // Side-specific observations
+  if (left_side_observations && left_side_observations.length > 0) {
+    knowledge += "## Left Side Details\n";
+    left_side_observations.forEach((obs: string) => knowledge += `- ${obs}\n`);
+    knowledge += "\n";
+  }
+  
+  if (right_side_observations && right_side_observations.length > 0) {
+    knowledge += "## Right Side Details\n";
+    right_side_observations.forEach((obs: string) => knowledge += `- ${obs}\n`);
+    knowledge += "\n";
+  }
+  
+  // Asymmetries
+  if (asymmetries && asymmetries.length > 0) {
+    knowledge += "## Left vs Right Asymmetries\n";
+    asymmetries.forEach((asym: string) => knowledge += `- ${asym}\n`);
+    knowledge += "\n";
+  }
+  
+  // Postural issues
+  if (postural_issues && postural_issues.length > 0) {
+    knowledge += "## Posture and Trunk\n";
+    postural_issues.forEach((issue: string) => knowledge += `- ${issue}\n`);
+    knowledge += "\n";
+  }
+  
+  // Clinical explanation
+  if (explanation) {
+    knowledge += "## Clinical Explanation\n";
+    knowledge += `${explanation}\n\n`;
+  }
+  
+  // Likely causes
+  if (likely_causes && likely_causes.length > 0) {
+    knowledge += "## Likely Causes\n";
+    likely_causes.forEach((cause: string, idx: number) => {
+      knowledge += `${idx + 1}. ${cause}\n`;
+    });
+    knowledge += "\n";
+  }
+  
+  // Immediate recommendation
+  if (immediate_tip) {
+    knowledge += "## Immediate Recommendation\n";
+    knowledge += `${immediate_tip}\n\n`;
+  }
+  
+  // Exercise plan
+  if (exercises && exercises.length > 0) {
+    knowledge += "## Personalized Exercise Plan\n\n";
+    exercises.forEach((ex: any, idx: number) => {
+      knowledge += `### Exercise ${idx + 1}: ${ex.name}\n`;
+      knowledge += `**Target**: ${ex.target || 'Overall mobility'}\n`;
+      if (ex.sets_reps) knowledge += `**Sets/Reps**: ${ex.sets_reps}\n`;
+      if (ex.duration) knowledge += `**Duration**: ${ex.duration}\n`;
+      if (ex.frequency) knowledge += `**Frequency**: ${ex.frequency}\n`;
+      
+      if (ex.instructions && ex.instructions.length > 0) {
+        knowledge += `**Instructions**:\n`;
+        ex.instructions.forEach((inst: string, i: number) => {
+          knowledge += `${i + 1}. ${inst}\n`;
+        });
+      }
+      
+      if (ex.form_tips && ex.form_tips.length > 0) {
+        knowledge += `**Form Tips**:\n`;
+        ex.form_tips.forEach((tip: string) => knowledge += `- ${tip}\n`);
+      }
+      knowledge += "\n";
+    });
+  }
+  
+  // Recovery timeline
+  if (timeline) {
+    knowledge += "## Expected Recovery Timeline\n";
+    knowledge += `${timeline}\n\n`;
+  }
+  
+  // Warning signs
+  if (warning_signs && warning_signs.length > 0) {
+    knowledge += "## Warning Signs (When to Seek Medical Help)\n";
+    warning_signs.forEach((sign: string) => knowledge += `- ${sign}\n`);
+    knowledge += "\n";
+  }
+  
+  // Role definition and initial instructions
+  knowledge += "## Your Role as Physical Therapist\n";
+  knowledge += "You are a caring, knowledgeable physical therapist helping this patient understand their gait analysis. ";
+  knowledge += "\n\n### IMPORTANT: When the patient first joins the video call:\n";
+  knowledge += "**Immediately greet them and automatically present their gait analysis overview WITHOUT waiting for them to speak first.**\n\n";
+  knowledge += "Follow this structure for your initial greeting:\n";
+  knowledge += "1. Warm greeting (Hello! I'm your physical therapist...)\n";
+  knowledge += `2. Present their gait type: ${gait_type || 'normal'} (severity ${severity_score}/10)\n`;
+  knowledge += "3. Explain 2-3 key visual observations you noticed\n";
+  knowledge += "4. Share the immediate recommendation\n";
+  knowledge += "5. Introduce the first exercise from their personalized plan\n";
+  knowledge += "6. Invite them to ask questions\n\n";
+  knowledge += "After your initial presentation, answer their questions using the detailed information above. ";
+  knowledge += "Be empathetic, encouraging, and clear. Focus on helping them understand and feel motivated to start their recovery.\n\n";
+  knowledge += "**Remember: Start speaking immediately when they join - don't wait for them to speak first!**";
+  
+  return knowledge;
 }
