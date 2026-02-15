@@ -19,8 +19,10 @@ import {
   ExerciseIllustration,
   getExerciseCategoryLabel,
 } from "@/lib/exercise-images";
+import Link from "next/link";
 import {
   Calendar,
+  Camera,
   ChevronLeft,
   ChevronRight,
   ExternalLink,
@@ -509,17 +511,31 @@ export default function CalendarPage() {
                                     })}
                                   </div>
                                 </div>
-                                {ev.htmlLink && (
-                                  <a
-                                    href={ev.htmlLink}
-                                    target="_blank"
-                                    rel="noopener noreferrer"
-                                    className="shrink-0 rounded-md p-1 text-[rgba(32,32,32,0.25)] opacity-0 transition-all hover:bg-[#E0F5FF]/50 hover:text-[#1DB3FB] group-hover/item:opacity-100"
-                                    title="Open in Google Calendar"
+                                <div className="flex shrink-0 items-center gap-1">
+                                  <Link
+                                    href={`/analyze?exercise=${encodeURIComponent(name)}${parsed.instructions.length > 0 ? `&instructions=${encodeURIComponent(parsed.instructions.join("|"))}` : ""}${parsed.setsReps ? `&sets_reps=${encodeURIComponent(parsed.setsReps)}` : ""}${parsed.frequency ? `&frequency=${encodeURIComponent(parsed.frequency)}` : ""}`}
                                   >
-                                    <ExternalLink className="h-3.5 w-3.5" />
-                                  </a>
-                                )}
+                                    <Button
+                                      variant="modern-outline"
+                                      size="modern-lg"
+                                      className="gap-2"
+                                    >
+                                      <Camera className="h-3.5 w-3.5" />
+                                      Analyze My Form
+                                    </Button>
+                                  </Link>
+                                  {ev.htmlLink && (
+                                    <a
+                                      href={ev.htmlLink}
+                                      target="_blank"
+                                      rel="noopener noreferrer"
+                                      className="shrink-0 rounded-md p-1 text-[rgba(32,32,32,0.25)] transition-all hover:bg-[#E0F5FF]/50 hover:text-[#1DB3FB]"
+                                      title="Open in Google Calendar"
+                                    >
+                                      <ExternalLink className="h-3.5 w-3.5" />
+                                    </a>
+                                  )}
+                                </div>
                               </div>
                             </div>
 
@@ -538,6 +554,7 @@ export default function CalendarPage() {
                                 ))}
                               </div>
                             )}
+
                           </div>
                         );
                       })}

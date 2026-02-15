@@ -7,7 +7,9 @@ import { Button } from "@/components/ui/button";
 import SeverityBadge from "@/components/analyze/severity-badge";
 import ExerciseCard from "@/components/analyze/exercise-card";
 import type { GaitAnalysisResponse } from "@/types/gait-analysis";
+import { type ActivityType, getActivityConfig } from "@/lib/activity-types";
 import BodyObservationMap from "@/components/analyze/body-observation-map";
+import KeyFrameGallery from "@/components/analyze/key-frame-gallery";
 import { useAuth } from "@/components/auth-context";
 import AddToCalendarButton from "@/components/analyze/add-to-calendar-button";
 import {
@@ -26,6 +28,7 @@ import {
 interface AnalysisResultsProps {
   data: GaitAnalysisResponse;
   onNewAnalysis: () => void;
+  onAnalyzeExerciseForm?: (exercise: import("@/types/gait-analysis").Exercise) => void;
 }
 
 /** Converts "antalgic_gait" -> "Antalgic Gait" */
@@ -102,9 +105,13 @@ function ObservationCard({
 export default function AnalysisResults({
   data,
   onNewAnalysis,
+  onAnalyzeExerciseForm,
 }: AnalysisResultsProps) {
   const { user } = useAuth();
-  const { visual_analysis, coaching } = data;
+  const { visual_analysis, coaching, key_frames } = data;
+  const isExerciseForm = !!data.exercise_name;
+  const activityType = (data.activity_type || "gait") as ActivityType;
+  const activityConfig = getActivityConfig(activityType);
   const [isCreatingConsultation, setIsCreatingConsultation] = useState(false);
   const [consultationError, setConsultationError] = useState<string | null>(null);
 
@@ -155,6 +162,7 @@ export default function AnalysisResults({
           session_id: data.session_id,
           user_id: user?.uid,
           avatar_id: selectedAvatarId,
+          activity_type: activityType,
         }),
       });
 
@@ -467,7 +475,7 @@ export default function AnalysisResults({
           {/* Gait type */}
           <div className="flex-1 text-center sm:text-left">
             <p className="mb-1 text-xs font-semibold uppercase tracking-wider text-[rgba(32,32,32,0.45)]">
-              Detected Gait Pattern
+              {activityType === "gait" ? "Detected Gait Pattern" : `${activityConfig.label} Results`}
             </p>
             <p className="text-2xl font-bold tracking-[-0.03em] text-[#202020] sm:text-3xl">
               {formatGaitType(visual_analysis.gait_type)}
@@ -502,11 +510,48 @@ export default function AnalysisResults({
 
           <BodyObservationMap visual_analysis={visual_analysis} />
 
-          {/* Likely Causes + Postural Issues side by side */}
+          {key_frames && key_frames.length > 0 && (
+            <KeyFrameGallery keyFrames={key_frames} />
+          )}
+        </div>
+
+        {/* RIGHT COLUMN */}
+        <div className="space-y-6">
+          <h3 className="h2-style text-[#202020]">
+            <span className="text-gradient">{isExerciseForm ? "How to Improve" : "Your Exercise Plan"}</span>
+          </h3>
+
+          {/* Exercise cards — only for general analysis */}
+          {!isExerciseForm && coaching.exercises.length > 0 && (
+            <div className="space-y-4">
+              {coaching.exercises.map((exercise, i) => (
+                <ExerciseCard key={i} exercise={exercise} index={i} onAnalyzeForm={onAnalyzeExerciseForm} />
+              ))}
+            </div>
+          )}
+
+          {/* Immediate tip — shown prominently for exercise form analysis */}
+          {isExerciseForm && coaching.immediate_tip && (
+            <div className="platform-feature-card rounded-[10px] border border-[rgba(32,32,32,0.06)] p-5">
+              <div className="mb-3 flex items-center gap-2">
+                <div className="flex h-8 w-8 items-center justify-center rounded-full bg-gradient-to-b from-[#E0F5FF] to-white">
+                  <Move className="h-4 w-4 text-[#1DB3FB]" />
+                </div>
+                <h4 className="text-sm font-bold tracking-[-0.01rem] text-[#202020]">
+                  Quick Tip
+                </h4>
+              </div>
+              <p className="text-sm leading-[170%] text-[rgba(32,32,32,0.75)]">
+                {coaching.immediate_tip}
+              </p>
+            </div>
+          )}
+
+          {/* Likely Causes + Postural Issues */}
           <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
             {coaching.likely_causes.length > 0 && (
               <ObservationCard
-                title="Likely Causes"
+                title={isExerciseForm ? "Form Issues" : "Likely Causes"}
                 icon={<Move className="h-4 w-4 text-amber-500" />}
                 items={coaching.likely_causes}
                 variant="warning"
@@ -521,22 +566,6 @@ export default function AnalysisResults({
               />
             )}
           </div>
-        </div>
-
-        {/* RIGHT COLUMN — Exercises + Timeline + Warnings */}
-        <div className="space-y-6">
-          <h3 className="h2-style text-[#202020]">
-            <span className="text-gradient">Your Exercise Plan</span>
-          </h3>
-
-          {/* Exercise cards */}
-          {coaching.exercises.length > 0 && (
-            <div className="space-y-4">
-              {coaching.exercises.map((exercise, i) => (
-                <ExerciseCard key={i} exercise={exercise} index={i} />
-              ))}
-            </div>
-          )}
 
           {/* Timeline + Warning signs side by side */}
           {(coaching.timeline || coaching.warning_signs.length > 0) && (

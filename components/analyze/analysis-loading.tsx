@@ -3,28 +3,29 @@
 import React from "react";
 import { Upload, Eye, Dumbbell, Check } from "lucide-react";
 import { cn } from "@/lib/utils";
+import type { ActivityType } from "@/lib/activity-types";
 
 interface AnalysisLoadingProps {
   currentStep: "uploading" | "analyzing" | "coaching";
+  activityType?: ActivityType;
+  exerciseName?: string;
 }
 
-const steps = [
-  {
-    id: "uploading" as const,
-    label: "Uploading video",
-    icon: Upload,
-  },
-  {
-    id: "analyzing" as const,
-    label: "Analyzing gait patterns",
-    icon: Eye,
-  },
-  {
-    id: "coaching" as const,
-    label: "Generating exercise plan",
-    icon: Dumbbell,
-  },
-];
+const ACTIVITY_ANALYZE_LABELS: Record<string, string> = {
+  gait: "Analyzing gait patterns",
+  stretching: "Analyzing stretching form",
+  balance: "Analyzing balance & stability",
+  strength: "Analyzing exercise form",
+  range_of_motion: "Analyzing range of motion",
+};
+
+const ACTIVITY_HEADER_LABELS: Record<string, string> = {
+  gait: "Analyzing your gait",
+  stretching: "Analyzing your stretching",
+  balance: "Analyzing your balance",
+  strength: "Analyzing your form",
+  range_of_motion: "Analyzing your range of motion",
+};
 
 function getStepStatus(
   stepId: string,
@@ -39,7 +40,20 @@ function getStepStatus(
   return "pending";
 }
 
-export default function AnalysisLoading({ currentStep }: AnalysisLoadingProps) {
+export default function AnalysisLoading({ currentStep, activityType = "gait", exerciseName }: AnalysisLoadingProps) {
+  const analyzeLabel = exerciseName
+    ? `Analyzing ${exerciseName} form`
+    : (ACTIVITY_ANALYZE_LABELS[activityType] || ACTIVITY_ANALYZE_LABELS.gait);
+  const headerLabel = exerciseName
+    ? `Analyzing your ${exerciseName} form`
+    : (ACTIVITY_HEADER_LABELS[activityType] || ACTIVITY_HEADER_LABELS.gait);
+
+  const steps = [
+    { id: "uploading" as const, label: "Uploading video", icon: Upload },
+    { id: "analyzing" as const, label: analyzeLabel, icon: Eye },
+    { id: "coaching" as const, label: "Generating exercise plan", icon: Dumbbell },
+  ];
+
   return (
     <div className="fade-in w-full">
       <div className="platform-feature-card rounded-[10px] border border-[rgba(32,32,32,0.06)] p-8">
@@ -52,7 +66,7 @@ export default function AnalysisLoading({ currentStep }: AnalysisLoadingProps) {
             />
           </div>
           <p className="text-lg font-semibold text-[#202020]">
-            Analyzing your gait
+            {headerLabel}
           </p>
           <p className="mt-1 text-sm text-[rgba(32,32,32,0.5)]">
             This may take a moment

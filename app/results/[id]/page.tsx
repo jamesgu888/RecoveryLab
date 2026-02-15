@@ -82,6 +82,7 @@ export default function ResultsPage() {
     timestamp: analysis.timestamp,
     visual_analysis: analysis.visual_analysis,
     coaching: analysis.coaching,
+    ...(analysis.key_frames ? { key_frames: analysis.key_frames } : {}),
   };
 
   return (

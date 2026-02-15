@@ -28,7 +28,7 @@ import { addEventAdmin } from "@/lib/recoverai/store-admin";
 export async function POST(req: NextRequest) {
   try {
     const body = await req.json();
-    const { visual_analysis, coaching, avatar_id, user_id } = body;
+    const { visual_analysis, coaching, avatar_id, user_id, activity_type } = body;
 
     if (!visual_analysis || !coaching) {
       return NextResponse.json(
@@ -38,7 +38,7 @@ export async function POST(req: NextRequest) {
     }
 
     // Create a conversational summary of the analysis for the avatar to speak
-    const initialMessage = buildInitialAvatarMessage(visual_analysis, coaching);
+    const initialMessage = buildInitialAvatarMessage(visual_analysis, coaching, activity_type || "gait");
 
     console.log("\n========== INTERACTIVE AVATAR SESSION ==========");
     console.log("Creating streaming session for gait analysis results...");
@@ -115,12 +115,22 @@ export async function POST(req: NextRequest) {
  * Builds a natural, conversational message for the avatar to speak
  * based on the gait analysis results.
  */
+const ACTIVITY_LABELS: Record<string, string> = {
+  gait: "gait",
+  stretching: "stretching form",
+  balance: "balance and stability",
+  strength: "exercise form",
+  range_of_motion: "range of motion",
+};
+
 function buildInitialAvatarMessage(
   visual_analysis: any,
-  coaching: any
+  coaching: any,
+  activity_type: string = "gait"
 ): string {
   const { gait_type, severity_score, visual_observations } = visual_analysis;
   const { explanation, exercises, immediate_tip } = coaching;
+  const activityLabel = ACTIVITY_LABELS[activity_type] || "movement";
 
   let message = "";
 
@@ -128,11 +138,11 @@ function buildInitialAvatarMessage(
   const severityLabel =
     severity_score >= 7 ? "significant" : severity_score >= 4 ? "moderate" : "mild";
 
-  if (gait_type && gait_type.toLowerCase() !== "normal") {
-    message += `Hello! I've analyzed your gait and noticed some ${severityLabel} patterns that we should address. `;
-    message += `Specifically, I observed ${gait_type.replace(/_/g, " ")} gait. `;
+  if (gait_type && gait_type.toLowerCase() !== "normal" && gait_type.toLowerCase() !== "general") {
+    message += `Hello! I've analyzed your ${activityLabel} and noticed some ${severityLabel} patterns that we should address. `;
+    message += `Specifically, I observed ${gait_type.replace(/_/g, " ")}. `;
   } else {
-    message += `Hello! I've analyzed your gait and overall it looks quite good. `;
+    message += `Hello! I've analyzed your ${activityLabel} and overall it looks quite good. `;
   }
 
   // Key observations (pick 2-3 most important)

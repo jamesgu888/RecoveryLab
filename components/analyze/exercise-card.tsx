@@ -1,16 +1,18 @@
 "use client";
 
 import { useState } from "react";
-import { ChevronDown } from "lucide-react";
+import { ChevronDown, Camera } from "lucide-react";
 import { cn } from "@/lib/utils";
+import { Button } from "@/components/ui/button";
 import type { Exercise } from "@/types/gait-analysis";
 
 interface ExerciseCardProps {
   exercise: Exercise;
   index: number;
+  onAnalyzeForm?: (exercise: Exercise) => void;
 }
 
-export default function ExerciseCard({ exercise, index }: ExerciseCardProps) {
+export default function ExerciseCard({ exercise, index, onAnalyzeForm }: ExerciseCardProps) {
   const [isExpanded, setIsExpanded] = useState(false);
 
   return (
@@ -80,6 +82,20 @@ export default function ExerciseCard({ exercise, index }: ExerciseCardProps) {
           </ol>
         </div>
       </div>
+
+      {onAnalyzeForm && (
+        <div className="mt-4 border-t border-[rgba(32,32,32,0.06)] pt-4">
+          <Button
+            variant="modern-outline"
+            size="modern-lg"
+            className="w-full gap-2"
+            onClick={() => onAnalyzeForm(exercise)}
+          >
+            <Camera className="h-4 w-4" />
+            Analyze My Form
+          </Button>
+        </div>
+      )}
 
     </div>
   );

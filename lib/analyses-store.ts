@@ -8,7 +8,7 @@ import {
   getDoc,
 } from "firebase/firestore";
 import { db } from "@/lib/firebase";
-import type { GaitAnalysisResponse } from "@/types/gait-analysis";
+import type { GaitAnalysisResponse, StoredKeyFrame } from "@/types/gait-analysis";
 
 const COLLECTION = "analyses";
 
@@ -17,8 +17,10 @@ export interface StoredAnalysis {
   user_id: string;
   session_id: string;
   timestamp: string;
+  activity_type?: string;
   visual_analysis: GaitAnalysisResponse["visual_analysis"];
   coaching: GaitAnalysisResponse["coaching"];
+  key_frames?: StoredKeyFrame[];
 }
 
 /** Strip undefined values that Firestore rejects */
@@ -34,8 +36,10 @@ export async function saveAnalysis(
     user_id: userId,
     session_id: result.session_id,
     timestamp: result.timestamp,
+    activity_type: result.activity_type || "gait",
     visual_analysis: result.visual_analysis,
     coaching: result.coaching,
+    ...(result.key_frames ? { key_frames: result.key_frames } : {}),
   });
   const docRef = await addDoc(collection(db, COLLECTION), data);
   return docRef.id;

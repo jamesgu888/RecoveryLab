@@ -10,15 +10,26 @@ import type {
   GaitAnalysisResponse,
   GaitAnalysisError,
   DebugInfo,
+  StoredKeyFrame,
 } from "@/types/gait-analysis";
 
 import {
   COACHING_SYSTEM_PROMPT,
   buildCoachingUserPrompt,
   buildVLMPrompt,
+  buildVLMPromptForActivity,
+  getVLMSystemPrompt,
+  getCoachingSystemPrompt,
+  buildCoachingUserPromptForActivity,
+  buildExerciseFormVLMPrompt,
+  getExerciseFormVLMSystemPrompt,
+  getExerciseFormCoachingSystemPrompt,
+  buildExerciseFormCoachingUserPrompt,
 } from "@/lib/prompt-templates";
 
 import { getExercisesForGait } from "@/lib/gait-exercises";
+import { getExercisesForActivity } from "@/lib/pt-exercises";
+import type { ActivityType } from "@/lib/activity-types";
 
 // ---------------------------------------------------------------------------
 // JSON extraction — models often wrap JSON in markdown or prose text
@@ -112,15 +123,24 @@ export async function analyzeGait(
 
   // Track blob URLs for cleanup
   let blobUrls: string[] = [];
+  let keptUrls = new Set<string>();
 
   try {
     const input = JSON.parse(payload) as {
       blobUrls: string[];
       timestamps: number[];
       duration: number;
+      activityType?: ActivityType;
+      exerciseName?: string;
+      exerciseInstructions?: string[];
+      exerciseFormTips?: string[];
     };
     blobUrls = input.blobUrls;
     const { timestamps, duration: videoDuration } = input;
+    const activityType: ActivityType = input.activityType || "gait";
+    const exerciseName = input.exerciseName;
+    const exerciseInstructions = input.exerciseInstructions || [];
+    const exerciseFormTips = input.exerciseFormTips || [];
 
     if (!blobUrls || !Array.isArray(blobUrls) || blobUrls.length < 4) {
       return {
@@ -153,6 +173,7 @@ export async function analyzeGait(
     // ------------------------------------------------------------------
 
     let vlmAnalysis: NvidiaVLMAnalysis;
+    let resolvedKeyFrames: StoredKeyFrame[] = [];
 
     try {
       const anthropicApiKey = env("ANTHROPIC_API_KEY");
@@ -161,7 +182,9 @@ export async function analyzeGait(
 
       debug.vlm_model = vlmModel;
 
-      const vlmPrompt = buildVLMPrompt(videoDuration, blobUrls.length, timestamps);
+      const vlmPrompt = exerciseName
+        ? buildExerciseFormVLMPrompt(exerciseName, exerciseInstructions, exerciseFormTips, videoDuration, blobUrls.length)
+        : buildVLMPromptForActivity(activityType, videoDuration, blobUrls.length, timestamps);
       debug.vlm_prompt = vlmPrompt;
 
       console.log("\n---------- VLM REQUEST ----------");
@@ -198,8 +221,9 @@ export async function analyzeGait(
       const vlmMessage = await vlmClient.messages.create({
         model: vlmModel,
         max_tokens: 4096,
-        system:
-          "You are a clinical gait analysis expert. You identify gait abnormalities from video frames. Answer the checklist questions honestly based on what you see. Respond with ONLY a valid JSON object.",
+        system: exerciseName
+          ? getExerciseFormVLMSystemPrompt(exerciseName)
+          : getVLMSystemPrompt(activityType),
         messages: [{ role: "user", content: contentBlocks }],
       });
 
@@ -222,6 +246,34 @@ export async function analyzeGait(
 
       vlmAnalysis = extractJSON<NvidiaVLMAnalysis>(rawContent);
       console.log("VLM parsed JSON:", JSON.stringify(vlmAnalysis, null, 2));
+
+      // Resolve key frame indices → blob URLs
+      if (vlmAnalysis.key_frames && Array.isArray(vlmAnalysis.key_frames)) {
+        const validFrames = vlmAnalysis.key_frames
+          .filter(
+            (kf) =>
+              typeof kf.frame_index === "number" &&
+              kf.frame_index >= 0 &&
+              kf.frame_index < blobUrls.length
+          )
+          .slice(0, 4);
+
+        resolvedKeyFrames = validFrames.map((kf) => ({
+          url: blobUrls[kf.frame_index],
+          annotation: kf.annotation,
+          body_region: kf.body_region,
+          timestamp_s: timestamps[kf.frame_index] ?? 0,
+          x: Math.max(0, Math.min(100, kf.x ?? 50)),
+          y: Math.max(0, Math.min(100, kf.y ?? 50)),
+        }));
+
+        // Track kept URLs so we don't delete them
+        for (const kf of resolvedKeyFrames) {
+          keptUrls.add(kf.url);
+        }
+
+        console.log(`Resolved ${resolvedKeyFrames.length} key frames`);
+      }
     } catch (vlmError) {
       const message =
         vlmError instanceof Error ? vlmError.message : String(vlmError);
@@ -253,7 +305,9 @@ export async function analyzeGait(
         timeout: claudeTimeout,
       });
 
-      const userPrompt = buildCoachingUserPrompt(vlmAnalysis);
+      const userPrompt = exerciseName
+        ? buildExerciseFormCoachingUserPrompt(vlmAnalysis, exerciseName)
+        : buildCoachingUserPromptForActivity(vlmAnalysis, activityType);
       debug.coaching_prompt = userPrompt;
 
       console.log("\n---------- COACHING REQUEST ----------");
@@ -264,7 +318,9 @@ export async function analyzeGait(
       const message = await anthropic.messages.create({
         model: claudeModel,
         max_tokens: 500,
-        system: COACHING_SYSTEM_PROMPT,
+        system: exerciseName
+          ? getExerciseFormCoachingSystemPrompt(exerciseName)
+          : getCoachingSystemPrompt(activityType),
         messages: [{ role: "user", content: userPrompt }],
       });
 
@@ -289,7 +345,7 @@ export async function analyzeGait(
         explanation:
           partial?.explanation ?? "Analysis complete. See exercises below.",
         likely_causes: partial?.likely_causes ?? [],
-        exercises: getExercisesForGait(vlmAnalysis.gait_type),
+        exercises: getExercisesForActivity(activityType, vlmAnalysis.gait_type),
         timeline: partial?.timeline ?? "4-8 weeks with consistent practice.",
         warning_signs: partial?.warning_signs ?? [
           "Sudden pain or weakness",
@@ -311,7 +367,7 @@ export async function analyzeGait(
         explanation:
           "See your exercise plan below based on the detected gait pattern.",
         likely_causes: [],
-        exercises: getExercisesForGait(vlmAnalysis.gait_type),
+        exercises: getExercisesForActivity(activityType, vlmAnalysis.gait_type),
         timeline: "4-8 weeks with consistent practice.",
         warning_signs: [
           "Sudden pain or weakness",
@@ -333,8 +389,11 @@ export async function analyzeGait(
       success: true,
       session_id: sessionId,
       timestamp,
+      activity_type: activityType,
+      ...(exerciseName ? { exercise_name: exerciseName } : {}),
       visual_analysis: vlmAnalysis,
       coaching,
+      ...(resolvedKeyFrames.length > 0 ? { key_frames: resolvedKeyFrames } : {}),
       debug,
     } satisfies GaitAnalysisResponse;
   } catch (error) {
@@ -348,11 +407,14 @@ export async function analyzeGait(
       debug,
     } satisfies GaitAnalysisError;
   } finally {
-    // Clean up blobs regardless of success/failure
-    if (blobUrls.length > 0) {
+    // Clean up blobs — keep key frame URLs for display
+    const urlsToDelete = blobUrls.filter((url) => !keptUrls.has(url));
+    if (urlsToDelete.length > 0) {
       try {
-        await del(blobUrls);
-        console.log(`Cleaned up ${blobUrls.length} blobs`);
+        await del(urlsToDelete);
+        console.log(
+          `Cleaned up ${urlsToDelete.length} blobs (kept ${keptUrls.size} key frames)`
+        );
       } catch (cleanupErr) {
         console.error("Blob cleanup failed:", cleanupErr);
       }

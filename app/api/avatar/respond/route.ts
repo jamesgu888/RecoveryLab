@@ -24,6 +24,7 @@ export async function POST(req: NextRequest) {
       visual_analysis,
       coaching,
       user_id,
+      activity_type,
     } = body;
 
     if (!session_id || !session_token || !user_question) {
@@ -73,7 +74,17 @@ export async function POST(req: NextRequest) {
       }
     }
 
-    // Build system prompt with gait analysis context
+    // Build system prompt with analysis context
+    const analysisType = activity_type || "gait";
+    const activityLabels: Record<string, string> = {
+      gait: "gait analysis",
+      stretching: "stretching and flexibility assessment",
+      balance: "balance and stability assessment",
+      strength: "strength exercise form analysis",
+      range_of_motion: "range of motion assessment",
+    };
+    const activityLabel = activityLabels[analysisType] || "movement analysis";
+
     const gaitType = visual_analysis?.gait_type || "unknown";
     const severity = visual_analysis?.severity_score || "unknown";
     const observations = visual_analysis?.visual_observations?.join(", ") || "none recorded";
@@ -81,10 +92,10 @@ export async function POST(req: NextRequest) {
     const explanation = coaching?.explanation || "";
     const coachingPlan = coaching?.immediate_tip || "";
 
-    const systemPrompt = `You are a friendly, knowledgeable AI recovery specialist conducting a virtual consultation about a patient's gait analysis results.
+    const systemPrompt = `You are a friendly, knowledgeable AI recovery specialist conducting a virtual consultation about a patient's ${activityLabel} results.
 
-Patient's gait analysis context:
-- Gait type: ${gaitType}
+Patient's ${activityLabel} context:
+- Classification: ${gaitType}
 - Severity: ${severity}/10
 - Visual observations: ${observations}
 - Recommended exercises: ${exercises}
@@ -95,7 +106,7 @@ ${pastContext}
 Guidelines:
 - Keep responses concise (2-4 sentences) since they will be spoken aloud by an avatar
 - Be warm, encouraging, and professional
-- Reference the patient's specific gait analysis when relevant
+- Reference the patient's specific ${activityLabel} when relevant
 - If asked about something outside your analysis data, be honest about limitations
 - Suggest consulting a healthcare professional for medical decisions`;
 

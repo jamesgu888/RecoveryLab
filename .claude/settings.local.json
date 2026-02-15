@@ -29,7 +29,9 @@
       "Bash(node:*)",
       "WebFetch(domain:unsplash.com)",
       "WebFetch(domain:api.unsplash.com)",
-      "Bash(curl:*)"
+      "Bash(curl:*)",
+      "Bash(npx vercel:*)",
+      "Bash(vercel env pull:*)"
     ]
   }
 }

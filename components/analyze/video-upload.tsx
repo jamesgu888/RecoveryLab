@@ -1,14 +1,26 @@
 "use client";
 
 import React, { useState, useRef, useCallback, useEffect } from "react";
-import { Upload, Video, Camera, X, RotateCcw, Circle, Square } from "lucide-react";
+import { Upload, Video, Camera, X, RotateCcw, Circle, Square, Footprints, StretchHorizontal, Scale, Dumbbell, MoveDiagonal } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
+import { ACTIVITY_TYPES, type ActivityType, type ActivityTypeConfig } from "@/lib/activity-types";
+
+const ICON_MAP: Record<string, React.ComponentType<{ className?: string }>> = {
+  Footprints,
+  StretchHorizontal,
+  Scale,
+  Dumbbell,
+  MoveDiagonal,
+};
 
 interface VideoUploadProps {
-  onVideoReady: (file: File) => void;
+  onVideoReady: (file: File, activityType: ActivityType) => void;
   isAnalyzing: boolean;
   maxSizeMB?: number;
+  selectedActivity: ActivityType;
+  onActivityChange: (activity: ActivityType) => void;
+  exerciseName?: string;
 }
 
 type Tab = "upload" | "record";
@@ -24,7 +36,12 @@ export default function VideoUpload({
   onVideoReady,
   isAnalyzing,
   maxSizeMB = 100,
+  selectedActivity,
+  onActivityChange,
+  exerciseName,
 }: VideoUploadProps) {
+  const activeConfig = ACTIVITY_TYPES.find((a) => a.id === selectedActivity) ?? ACTIVITY_TYPES[0];
+  const buttonLabel = exerciseName ? `Analyze ${exerciseName}` : activeConfig.analyzeButtonLabel;
   const [activeTab, setActiveTab] = useState<Tab>("upload");
   const [isDragOver, setIsDragOver] = useState(false);
   const [selectedFile, setSelectedFile] = useState<File | null>(null);
@@ -187,13 +204,14 @@ export default function VideoUpload({
     }
   }, [activeTab, cameraPermission, requestCamera, stopCamera]);
 
-  // Attach stream to video element when permission granted
+  // Attach stream to video element when permission granted or when
+  // returning from recorded preview (video element re-mounts when recordedBlob clears)
   useEffect(() => {
     if (cameraPermission === "granted" && webcamVideoRef.current && mediaStreamRef.current) {
       webcamVideoRef.current.srcObject = mediaStreamRef.current;
       webcamVideoRef.current.play();
     }
-  }, [cameraPermission]);
+  }, [cameraPermission, recordedBlob]);
 
   const startRecording = useCallback(() => {
     if (!mediaStreamRef.current) return;
@@ -262,11 +280,11 @@ export default function VideoUpload({
 
   const handleUseRecording = useCallback(() => {
     if (!recordedBlob) return;
-    const file = new File([recordedBlob], `gait-recording-${Date.now()}.webm`, {
+    const file = new File([recordedBlob], `${selectedActivity}-recording-${Date.now()}.webm`, {
       type: "video/webm",
     });
-    onVideoReady(file);
-  }, [recordedBlob, onVideoReady]);
+    onVideoReady(file, selectedActivity);
+  }, [recordedBlob, onVideoReady, selectedActivity]);
 
   const formatDuration = (seconds: number): string => {
     const m = Math.floor(seconds / 60)
@@ -278,6 +296,35 @@ export default function VideoUpload({
 
   return (
     <div className="w-full">
+      {/* Activity Type Selector — hidden when analyzing a specific exercise */}
+      {!exerciseName && <div className="mb-6">
+        <div className="flex flex-wrap items-center justify-center gap-2">
+          {ACTIVITY_TYPES.map((activity) => {
+            const IconComponent = ICON_MAP[activity.icon];
+            const isSelected = selectedActivity === activity.id;
+            return (
+              <button
+                key={activity.id}
+                type="button"
+                onClick={() => onActivityChange(activity.id)}
+                disabled={isAnalyzing}
+                className={cn(
+                  "flex items-center gap-2 rounded-full px-4 py-2 text-sm font-medium transition-all duration-200 border",
+                  isSelected
+                    ? "bg-gradient-to-b from-[#515151] to-[#202020] text-white border-transparent shadow-[0_0_1.054px_3.163px_#494949_inset,0_6.325px_5.271px_0_rgba(0,0,0,0.55)_inset]"
+                    : "bg-white text-[rgba(32,32,32,0.75)] border-[rgba(32,32,32,0.08)] hover:border-[rgba(32,32,32,0.2)] hover:text-[#202020]",
+                  isAnalyzing && "pointer-events-none opacity-60"
+                )}
+                title={activity.description}
+              >
+                {IconComponent && <IconComponent className="h-4 w-4" />}
+                {activity.label}
+              </button>
+            );
+          })}
+        </div>
+      </div>}
+
       {/* Tab Switcher */}
       <div className="mb-6 flex items-center justify-center">
         <div className="inline-flex rounded-full bg-white p-1 shadow-[0px_2px_4px_-1px_rgba(1,65,99,0.08)] border border-[rgba(32,32,32,0.08)]">
@@ -447,10 +494,10 @@ export default function VideoUpload({
                 variant="modern-primary"
                 size="modern-xl"
                 className="w-full gap-2"
-                onClick={() => onVideoReady(selectedFile)}
+                onClick={() => onVideoReady(selectedFile, selectedActivity)}
                 disabled={isAnalyzing}
               >
-                Analyze Gait
+                {buttonLabel}
               </Button>
             </div>
           )}
@@ -543,7 +590,7 @@ export default function VideoUpload({
                 </div>
 
                 <p className="mt-3 text-center text-xs text-[rgba(32,32,32,0.4)]">
-                  Record yourself walking for 10-15 seconds for best results (max 30s)
+                  {activeConfig.videoTip}
                 </p>
               </>
             )}
@@ -593,7 +640,7 @@ export default function VideoUpload({
                     onClick={handleUseRecording}
                     disabled={isAnalyzing}
                   >
-                    Analyze Gait
+                    {buttonLabel}
                   </Button>
                 </div>
               </>

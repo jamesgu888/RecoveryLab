@@ -12,6 +12,7 @@ const SEVERITY_COLORS = {
   high: { fill: "#EF4444", stroke: "#DC2626" },
   medium: { fill: "#F59E0B", stroke: "#D97706" },
   low: { fill: "#93C5FD", stroke: "#60A5FA" },
+  good: { fill: "#1DB3FB", stroke: "#0EA5E9" },
 };
 
 const ALL_BODY_PARTS: (keyof PartsInput)[] = [
@@ -78,7 +79,7 @@ function ObservationCard({
   );
 }
 
-function InteractiveBody({ gaitType }: { gaitType: string }) {
+function InteractiveBody({ gaitType, severityScore, allObservations }: { gaitType: string; severityScore?: number; allObservations?: string[] }) {
   const [LoadedBody, setLoadedBody] = useState<FC<BodyComponentProps> | null>(null);
 
   useEffect(() => {
@@ -95,18 +96,21 @@ function InteractiveBody({ gaitType }: { gaitType: string }) {
     return result;
   }, []);
 
-  const bodyParts = getBodyPartsForGait(gaitType);
+  const bodyParts = getBodyPartsForGait(gaitType, severityScore, allObservations);
 
   const severityCSS = useMemo(() => {
     const rules: string[] = [];
-    for (const id of bodyParts.high) {
-      rules.push(`.gait-body-wrapper #${id} { fill: ${SEVERITY_COLORS.high.fill} !important; stroke: ${SEVERITY_COLORS.high.stroke} !important; }`);
+    for (const id of bodyParts.good) {
+      rules.push(`.gait-body-wrapper #${id} { fill: ${SEVERITY_COLORS.good.fill} !important; stroke: ${SEVERITY_COLORS.good.stroke} !important; }`);
+    }
+    for (const id of bodyParts.low) {
+      rules.push(`.gait-body-wrapper #${id} { fill: ${SEVERITY_COLORS.low.fill} !important; stroke: ${SEVERITY_COLORS.low.stroke} !important; }`);
     }
     for (const id of bodyParts.medium) {
       rules.push(`.gait-body-wrapper #${id} { fill: ${SEVERITY_COLORS.medium.fill} !important; stroke: ${SEVERITY_COLORS.medium.stroke} !important; }`);
     }
-    for (const id of bodyParts.low) {
-      rules.push(`.gait-body-wrapper #${id} { fill: ${SEVERITY_COLORS.low.fill} !important; stroke: ${SEVERITY_COLORS.low.stroke} !important; }`);
+    for (const id of bodyParts.high) {
+      rules.push(`.gait-body-wrapper #${id} { fill: ${SEVERITY_COLORS.high.fill} !important; stroke: ${SEVERITY_COLORS.high.stroke} !important; }`);
     }
     return rules.join("\n");
   }, [bodyParts]);
@@ -152,10 +156,22 @@ export default function BodyObservationMap({
 
         {/* Body figure — large centerpiece */}
         <div className="order-1 flex flex-col items-center md:order-2">
-          <InteractiveBody gaitType={visual_analysis.gait_type} />
+          <InteractiveBody
+            gaitType={visual_analysis.gait_type}
+            severityScore={visual_analysis.severity_score}
+            allObservations={[
+              ...visual_analysis.visual_observations,
+              ...visual_analysis.left_side_observations,
+              ...visual_analysis.right_side_observations,
+            ]}
+          />
 
           {/* Color legend */}
           <div className="mt-3 flex flex-wrap items-center justify-center gap-x-5 gap-y-1.5 text-[11px] text-[rgba(32,32,32,0.55)]">
+            <span className="flex items-center gap-1.5">
+              <span className="inline-block h-2.5 w-2.5 rounded-full" style={{ backgroundColor: SEVERITY_COLORS.good.fill }} />
+              Healthy
+            </span>
             <span className="flex items-center gap-1.5">
               <span className="inline-block h-2.5 w-2.5 rounded-full" style={{ backgroundColor: SEVERITY_COLORS.high.fill }} />
               Most Affected

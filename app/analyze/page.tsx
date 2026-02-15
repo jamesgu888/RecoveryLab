@@ -1,6 +1,7 @@
 "use client";
 
-import React, { useState, useCallback } from "react";
+import React, { useState, useCallback, useEffect } from "react";
+import { useSearchParams } from "next/navigation";
 import { cn } from "@/lib/utils";
 import Header from "@/components/header";
 import Footer from "@/components/footer";
@@ -14,21 +15,42 @@ import { extractVideoFrames } from "@/lib/extract-frames";
 import { analyzeGait } from "@/app/actions/analyze-gait";
 import { useAuth } from "@/components/auth-context";
 import { saveAnalysis } from "@/lib/analyses-store";
-import type { GaitAnalysisResponse, DebugInfo } from "@/types/gait-analysis";
+import type { GaitAnalysisResponse, DebugInfo, Exercise } from "@/types/gait-analysis";
+import { type ActivityType, getActivityConfig } from "@/lib/activity-types";
 
 type PageState = "upload" | "analyzing" | "results" | "error";
 type AnalysisStep = "uploading" | "analyzing" | "coaching";
 
 export default function AnalyzePage() {
   const { user } = useAuth();
+  const searchParams = useSearchParams();
   const [pageState, setPageState] = useState<PageState>("upload");
   const [analysisStep, setAnalysisStep] = useState<AnalysisStep>("uploading");
   const [results, setResults] = useState<GaitAnalysisResponse | null>(null);
   const [errorMessage, setErrorMessage] = useState<string>("");
   const [gridPreview, setGridPreview] = useState<string | null>(null);
   const [debugInfo, setDebugInfo] = useState<DebugInfo | null>(null);
+  const [activityType, setActivityType] = useState<ActivityType>("gait");
+  const [targetExercise, setTargetExercise] = useState<Exercise | null>(null);
 
-  const handleVideoReady = useCallback(async (file: File) => {
+  // Pre-fill from query params (e.g. linked from calendar)
+  useEffect(() => {
+    const exerciseName = searchParams.get("exercise");
+    if (exerciseName) {
+      const instructions = searchParams.get("instructions");
+      setTargetExercise({
+        name: exerciseName,
+        target: "",
+        instructions: instructions ? instructions.split("|") : [],
+        sets_reps: searchParams.get("sets_reps") || "",
+        frequency: searchParams.get("frequency") || "",
+        form_tips: [],
+      });
+      setActivityType("strength");
+    }
+  }, [searchParams]);
+
+  const handleVideoReady = useCallback(async (file: File, activity: ActivityType = "gait") => {
     setPageState("analyzing");
     setAnalysisStep("uploading");
     setResults(null);
@@ -64,7 +86,13 @@ export default function AnalyzePage() {
       setAnalysisStep("analyzing");
 
       // Server action fetches images from blob, sends base64 to Claude, then cleans up
-      const data = await analyzeGait(JSON.stringify({ blobUrls, timestamps, duration }));
+      const payload: Record<string, unknown> = { blobUrls, timestamps, duration, activityType: activity };
+      if (targetExercise) {
+        payload.exerciseName = targetExercise.name;
+        payload.exerciseInstructions = targetExercise.instructions;
+        payload.exerciseFormTips = targetExercise.form_tips;
+      }
+      const data = await analyzeGait(JSON.stringify(payload));
 
       if (data.debug) {
         setDebugInfo(data.debug);
@@ -91,14 +119,15 @@ export default function AnalyzePage() {
         }
 
         // Notify family contacts about the new analysis
+        const activityLabel = getActivityConfig(activity).label;
         fetch("/api/notifications/send", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({
             user_id: user.uid,
             type: "analysis_update",
-            subject: "GaitGuard: New Gait Analysis Complete",
-            message: `A new gait analysis has been completed. Gait type: ${analysisResult.visual_analysis.gait_type.replace(/_/g, " ")}, Severity: ${analysisResult.visual_analysis.severity_score}/10. ${analysisResult.coaching.explanation || ""}`,
+            subject: `GaitGuard: New ${activityLabel} Complete`,
+            message: `A new ${activityLabel.toLowerCase()} has been completed. Type: ${analysisResult.visual_analysis.gait_type.replace(/_/g, " ")}, Severity: ${analysisResult.visual_analysis.severity_score}/10. ${analysisResult.coaching.explanation || ""}`,
           }),
         }).catch((err) =>
           console.error("[GaitGuard] Failed to send family notifications:", err)
@@ -110,7 +139,7 @@ export default function AnalyzePage() {
       setErrorMessage(message);
       setPageState("error");
     }
-  }, [user]);
+  }, [user, activityType, targetExercise]);
 
   const handleRetry = useCallback(() => {
     setPageState("upload");
@@ -119,6 +148,19 @@ export default function AnalyzePage() {
     setAnalysisStep("uploading");
     setGridPreview(null);
     setDebugInfo(null);
+    setTargetExercise(null);
+  }, []);
+
+  const handleAnalyzeExerciseForm = useCallback((exercise: Exercise) => {
+    setTargetExercise(exercise);
+    setActivityType("strength");
+    setPageState("upload");
+    setResults(null);
+    setErrorMessage("");
+    setAnalysisStep("uploading");
+    setGridPreview(null);
+    setDebugInfo(null);
+    window.scrollTo({ top: 0, behavior: "smooth" });
   }, []);
 
   const showDebug = debugInfo || gridPreview;
@@ -132,11 +174,16 @@ export default function AnalyzePage() {
           {pageState !== "results" && (
             <div className="fade-in mb-10 text-center">
               <h2 className="h2-style text-[#202020]">
-                Analyze your <span className="text-gradient">gait</span>
+                {targetExercise ? (
+                  <>Analyze your <span className="text-gradient">{targetExercise.name}</span> form</>
+                ) : (
+                  <>Analyze your <span className="text-gradient">{getActivityConfig(activityType).label.toLowerCase()}</span></>
+                )}
               </h2>
               <p className="mx-auto mt-4 max-w-lg text-base leading-[140%] text-[rgba(32,32,32,0.75)]">
-                Upload a video of yourself walking or record one with your webcam.
-                Our AI will analyze your gait patterns and suggest exercises.
+                {targetExercise
+                  ? `Record yourself performing ${targetExercise.name} and our AI will evaluate your form.`
+                  : "Upload a video or record one with your webcam. Our AI will analyze your movement and suggest exercises."}
               </p>
             </div>
           )}
@@ -145,12 +192,15 @@ export default function AnalyzePage() {
             <VideoUpload
               onVideoReady={handleVideoReady}
               isAnalyzing={false}
+              selectedActivity={activityType}
+              onActivityChange={(a) => { setActivityType(a); setTargetExercise(null); }}
+              exerciseName={targetExercise?.name}
             />
           )}
 
           {pageState === "analyzing" && (
             <>
-              <AnalysisLoading currentStep={analysisStep} />
+              <AnalysisLoading currentStep={analysisStep} activityType={activityType} exerciseName={targetExercise?.name} />
               {gridPreview && (
                 <div className="mt-6 rounded-[10px] border border-orange-200 bg-orange-50/50 p-5">
                   <p className="mb-2 text-sm font-semibold text-orange-800">
@@ -169,7 +219,7 @@ export default function AnalyzePage() {
 
           {pageState === "results" && results && (
             <div className="fade-in">
-              <AnalysisResults data={results} onNewAnalysis={handleRetry} />
+              <AnalysisResults data={results} onNewAnalysis={handleRetry} onAnalyzeExerciseForm={handleAnalyzeExerciseForm} />
             </div>
           )}
 
