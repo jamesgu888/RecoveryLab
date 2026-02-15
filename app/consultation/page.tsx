@@ -398,10 +398,8 @@ function ConsultationContent() {
         // Start mic and recording
         await startMicAndRecording();
 
-        // Trigger initial greeting
-        if (!hasGreeted) {
-          generateInitialGreeting();
-        }
+        // Greeting is triggered by a separate useEffect that waits
+        // for both connection AND gaitContext to be ready
       });
 
       room.on("disconnected", () => {
@@ -449,6 +447,14 @@ function ConsultationContent() {
       setError("Failed to start consultation");
     }
   };
+
+  // Trigger greeting once both LiveKit is connected AND gaitContext is loaded
+  // (these arrive asynchronously in separate useEffects, so we need to wait for both)
+  useEffect(() => {
+    if (!isConnecting && !error && gaitContext && !hasGreeted) {
+      generateInitialGreeting();
+    }
+  }, [isConnecting, error, gaitContext, hasGreeted]);
 
   // Handle user message
   const handleUserMessage = async (userMessage: string) => {
@@ -597,7 +603,7 @@ function ConsultationContent() {
     }
 
     const script = document.createElement("script");
-    script.src = "https://unpkg.com/@livekit/components-core@0.10.0/dist/livekit-client.umd.min.js";
+    script.src = "https://cdn.jsdelivr.net/npm/livekit-client@2.5.7/dist/livekit-client.umd.min.js";
     script.crossOrigin = "anonymous";
 
     script.onload = () => {
@@ -616,7 +622,7 @@ function ConsultationContent() {
     script.onerror = () => {
       console.log("[Consultation] Trying alternative CDN...");
       const altScript = document.createElement("script");
-      altScript.src = "https://cdn.jsdelivr.net/npm/livekit-client@2.5.7/dist/livekit-client.umd.min.js";
+      altScript.src = "https://unpkg.com/livekit-client@2.5.7/dist/livekit-client.umd.min.js";
       altScript.crossOrigin = "anonymous";
 
       altScript.onload = () => {
