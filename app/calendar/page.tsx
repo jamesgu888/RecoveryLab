@@ -36,6 +36,7 @@ import {
   RefreshCw,
   Unlink,
 } from "lucide-react";
+import UploadScheduleButton from "@/components/calendar/upload-schedule-button";
 
 const ACCENT_COLORS = [
   { bg: "bg-sky-100", text: "text-sky-700", dot: "bg-sky-500" },
@@ -105,6 +106,8 @@ export default function CalendarPage() {
   const [showDeleteModal, setShowDeleteModal] = useState(false);
   const [deleting, setDeleting] = useState(false);
   const [mounted, setMounted] = useState(false);
+  const [completions, setCompletions] = useState<Record<string, any>>({});
+  const [togglingCompletion, setTogglingCompletion] = useState<string | null>(null);
 
   useEffect(() => setMounted(true), []);
 
@@ -140,6 +143,15 @@ export default function CalendarPage() {
       }
 
       setEvents(data.events || []);
+      
+      // Fetch completions for this month
+      const completionsRes = await fetch(
+        `/api/calendar/completions?user_id=${user.uid}`
+      );
+      const completionsData = await completionsRes.json();
+      if (completionsData.success) {
+        setCompletions(completionsData.completions || {});
+      }
     } catch (err) {
       setError(err instanceof Error ? err.message : "Failed to load events");
     } finally {
@@ -214,6 +226,56 @@ export default function CalendarPage() {
       setSelectedDate(null);
     } catch (err) {
       setError(err instanceof Error ? err.message : "Failed to disconnect calendar");
+    }
+  };
+
+  const toggleCompletion = async (eventId: string, eventTitle: string, date: string) => {
+    if (!user) return;
+    
+    setTogglingCompletion(eventId);
+    const isCompleted = !!completions[eventId];
+    
+    try {
+      const res = await fetch("/api/calendar/completions", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          user_id: user.uid,
+          event_id: eventId,
+          event_title: eventTitle,
+          date,
+          completed: !isCompleted,
+        }),
+      });
+      
+      const data = await res.json();
+      if (!data.success) {
+        throw new Error(data.error || "Failed to update completion");
+      }
+      
+      // Update local state
+      if (!isCompleted) {
+        setCompletions(prev => ({
+          ...prev,
+          [eventId]: {
+            event_id: eventId,
+            event_title: eventTitle,
+            date,
+            completed: true,
+            completed_at: new Date().toISOString(),
+          },
+        }));
+      } else {
+        setCompletions(prev => {
+          const newCompletions = { ...prev };
+          delete newCompletions[eventId];
+          return newCompletions;
+        });
+      }
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Failed to update completion");
+    } finally {
+      setTogglingCompletion(null);
     }
   };
 
@@ -298,6 +360,7 @@ export default function CalendarPage() {
             </div>
             {hasCalendarAccess && (
               <div className="flex flex-wrap items-center gap-2 self-start">
+                <UploadScheduleButton onScheduleAdded={fetchEvents} />
                 <a
                   href="https://calendar.google.com"
                   target="_blank"
@@ -491,20 +554,51 @@ export default function CalendarPage() {
                         const colorIdx = colorMap.get(name) ?? 0;
                         const color = ACCENT_COLORS[colorIdx];
                         const parsed = parseDescription(ev.description);
+                        const dateStr = ev.start.split('T')[0];
+                        const isCompleted = !!completions[ev.id];
+                        const isToggling = togglingCompletion === ev.id;
+                        
                         return (
-                          <div key={ev.id} className="group/item px-5 py-4">
+                          <div key={ev.id} className={`group/item px-5 py-4 ${isCompleted ? 'bg-green-50/50' : ''}`}>
                             {/* Header row */}
                             <div className="flex items-start gap-3">
+                              {/* Completion checkbox */}
+                              <button
+                                onClick={() => toggleCompletion(ev.id, name, dateStr)}
+                                disabled={isToggling}
+                                className="mt-1 shrink-0 transition-opacity disabled:opacity-50"
+                                title={isCompleted ? "Mark as incomplete" : "Mark as complete"}
+                              >
+                                <div className={`h-5 w-5 rounded border-2 flex items-center justify-center transition-all ${
+                                  isCompleted
+                                    ? 'bg-green-500 border-green-500'
+                                    : 'border-gray-300 hover:border-green-400'
+                                }`}>
+                                  {isCompleted && (
+                                    <svg className="h-3 w-3 text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={3} d="M5 13l4 4L19 7" />
+                                    </svg>
+                                  )}
+                                </div>
+                              </button>
+                              
                               <ExerciseIllustration
                                 name={name}
                                 className="h-14 w-14 shrink-0"
                               />
                               <div className="flex flex-1 items-start justify-between gap-2 min-w-0">
                                 <div className="min-w-0">
-                                  <p className="text-[14px] font-semibold text-[#202020] leading-tight">
+                                  <p className={`text-[14px] font-semibold leading-tight ${
+                                    isCompleted ? 'text-green-700 line-through' : 'text-[#202020]'
+                                  }`}>
                                     {name}
                                   </p>
                                   <div className="mt-1.5 flex flex-wrap items-center gap-1.5">
+                                    {isCompleted && (
+                                      <span className="inline-block rounded-full bg-green-100 px-2 py-0.5 text-[10px] font-medium text-green-700">
+                                        ✓ Completed
+                                      </span>
+                                    )}
                                     <span className="inline-block rounded-full bg-[rgba(32,32,32,0.04)] px-2 py-0.5 text-[10px] font-medium text-[rgba(32,32,32,0.45)]">
                                       {getExerciseCategoryLabel(name)}
                                     </span>
