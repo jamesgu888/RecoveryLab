@@ -153,6 +153,8 @@ export default function AnalysisResults({
     setConsultationError(null);
 
     try {
+      const selectedAvatar = avatars.find(a => a.avatar_id === selectedAvatarId);
+      
       const res = await fetch("/api/avatar/interactive-session", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -162,6 +164,7 @@ export default function AnalysisResults({
           session_id: data.session_id,
           user_id: user?.uid,
           avatar_id: selectedAvatarId,
+          avatar_name: selectedAvatar?.avatar_name || null,
           activity_type: activityType,
         }),
       });
@@ -172,29 +175,19 @@ export default function AnalysisResults({
         throw new Error(result.error || "Failed to create consultation session");
       }
 
-      // Open LiveKit demo page (simpler, known to work)
-      const url = `https://meet.livekit.io/custom?liveKitUrl=${encodeURIComponent(result.livekit_url)}&token=${encodeURIComponent(result.livekit_client_token)}`;
-      window.open(url, "_blank");
+      // Navigate to custom consultation page with all session data
+      const params = new URLSearchParams({
+        session_id: result.session_id,
+        session_token: result.session_token,
+        livekit_url: result.livekit_url,
+        livekit_token: result.livekit_client_token,
+        ws_url: result.ws_url || "",
+        avatar_id: result.avatar_id || "",
+        avatar_name: result.avatar_name || "",
+        gait_context: result.gait_context,
+      });
       
-      // Also send the speak command via WebSocket after a delay
-      if (result.ws_url && result.initial_message) {
-        setTimeout(() => {
-          try {
-            const ws = new WebSocket(result.ws_url);
-            ws.onopen = () => {
-              console.log("WebSocket connected, sending speak command");
-              ws.send(JSON.stringify({
-                type: "speak",
-                text: result.initial_message,
-              }));
-              setTimeout(() => ws.close(), 1000);
-            };
-            ws.onerror = (err) => console.error("WebSocket error:", err);
-          } catch (err) {
-            console.error("Failed to connect WebSocket:", err);
-          }
-        }, 2000); // Wait 2 seconds for user to connect to LiveKit room
-      }
+      window.open(`/consultation?${params.toString()}`, "_blank");
       
       setShowConsultationModal(false);
     } catch (err) {

@@ -15,6 +15,48 @@ export interface Avatar {
   gender?: string;
 }
 
+// Map avatar IDs to their gender for voice selection
+const AVATAR_GENDER_MAP: Record<string, "male" | "female"> = {
+  "513fd1b7-7ef9-466d-9af2-344e51eeb833": "female", // Ann Therapist
+  "7b888024-f8c9-4205-95e1-78ce01497bda": "male",   // Shawn Therapist
+  "55eec60c-d665-4972-a529-bbdcaf665ab8": "male",   // Bryan Fitness Coach
+  "0930fd59-c8ad-434d-ad53-b391a1768720": "male",   // Dexter Lawyer
+  "bd43ce31-7425-4379-8407-60f029548e61": "male",   // Dexter Doctor Sitting
+  "5761a14c-8720-4ce1-8c2b-3f351718fc79": "male",   // Dexter Doctor Standing
+  "9650a758-1085-4d49-8bf3-f347565ec229": "male",   // Silas HR
+  "dc2935cf-5863-4f08-943b-c7478aea59fb": "male",   // Silas Customer Support
+};
+
+/**
+ * Get the gender for a given avatar ID
+ * Falls back to detecting from name if not in map
+ */
+export function getAvatarGender(avatar_id: string, avatar_name?: string): "male" | "female" {
+  // Check explicit map first
+  if (AVATAR_GENDER_MAP[avatar_id]) {
+    return AVATAR_GENDER_MAP[avatar_id];
+  }
+  
+  // Try to detect from name
+  if (avatar_name) {
+    const nameLower = avatar_name.toLowerCase();
+    // Male names/titles
+    if (nameLower.includes('dexter') || nameLower.includes('shawn') || 
+        nameLower.includes('bryan') || nameLower.includes('daniel') ||
+        nameLower.includes('silas') || nameLower.includes('male')) {
+      return "male";
+    }
+    // Female names/titles
+    if (nameLower.includes('ann') || nameLower.includes('sarah') || 
+        nameLower.includes('female') || nameLower.includes('woman')) {
+      return "female";
+    }
+  }
+  
+  // Default to female if unknown
+  return "female";
+}
+
 export interface SessionToken {
   session_id: string;
   session_token: string;
@@ -78,8 +120,9 @@ export async function listAvatars(): Promise<Avatar[]> {
 }
 
 /**
- * Create a session token for LITE mode (streaming avatar controlled by your app)
- * This is the first step - returns session_id and session_token
+ * Create a session token for LITE mode (we control the audio via WebSocket)
+ * 
+ * @param avatar_id - Optional avatar ID to use
  */
 export async function createSessionToken(avatar_id?: string) {
   if (!LIVEAVATAR_API_KEY) {
@@ -90,17 +133,19 @@ export async function createSessionToken(avatar_id?: string) {
   const selectedAvatarId = avatar_id || DEFAULT_AVATAR_ID;
 
   try {
-    console.log(`[LiveAvatar] Creating session with avatar_id: ${selectedAvatarId}`);
-    const res = await fetch(`${LIVEAVATAR_BASE_URL}/sessions/token`, {
+    console.log(`[LiveAvatar] Creating FULL mode session with avatar_id: ${selectedAvatarId}`);
+    console.log(`[LiveAvatar] FULL mode - supports /streaming.task text-to-speech`);
+    
+  const requestBody: any = {
+    mode: "LITE", // LITE mode - we send audio
+    avatar_id: selectedAvatarId,
+  };    const res = await fetch(`${LIVEAVATAR_BASE_URL}/sessions/token`, {
       method: "POST",
       headers: {
         "X-API-KEY": LIVEAVATAR_API_KEY,
         "Content-Type": "application/json",
       },
-      body: JSON.stringify({
-        mode: "LITE", // LITE mode - we control audio/text via WebSocket
-        avatar_id: selectedAvatarId,
-      }),
+      body: JSON.stringify(requestBody),
     });
 
     if (!res.ok) {
@@ -119,6 +164,43 @@ export async function createSessionToken(avatar_id?: string) {
   } catch (err) {
     const msg = err instanceof Error ? err.message : String(err);
     console.error(`[LiveAvatar] Error creating session:`, msg);
+    return { success: false, error: msg };
+  }
+}
+
+/**
+ * Send initial context message to avatar via task
+ * This injects the gait analysis into the conversation memory
+ */
+export async function sendInitialContext(session_id: string, session_token: string, contextMessage: string) {
+  try {
+    console.log(`[LiveAvatar] Injecting context via task API...`);
+    console.log(`[LiveAvatar] Context length: ${contextMessage.length} chars`);
+    
+    const res = await fetch(`${LIVEAVATAR_BASE_URL}/sessions/${session_id}/tasks/repeat`, {
+      method: "POST",
+      headers: {
+        "Authorization": `Bearer ${session_token}`,
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({
+        text: contextMessage,
+        task_mode: "SYNC",
+      }),
+    });
+
+    if (!res.ok) {
+      const err = await res.text().catch(() => "Unknown error");
+      console.error(`[LiveAvatar] Context injection failed: ${res.status}`, err);
+      return { success: false, error: err };
+    }
+
+    const data = await res.json();
+    console.log(`[LiveAvatar] ✅ Context injected successfully`);
+    return { success: true, data };
+  } catch (err) {
+    const msg = err instanceof Error ? err.message : String(err);
+    console.error(`[LiveAvatar] Context injection error:`, msg);
     return { success: false, error: msg };
   }
 }
